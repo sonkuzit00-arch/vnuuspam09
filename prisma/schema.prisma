@@ -1,0 +1,115 @@
+// Схема данных сервиса учёта обращений граждан ДГД.
+// SQLite не поддерживает enum/массивы в Prisma — перечисления валидируются
+// на уровне приложения (см. src/lib/constants.ts) и хранятся как String.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String   @default("EMPLOYEE") // EMPLOYEE | KAU | ADMIN
+  createdAt    DateTime @default(now())
+
+  appeals AppealResponsible[]
+  events  AppealEvent[]
+
+  @@map("users")
+}
+
+model Appeal {
+  id String @id @default(cuid())
+
+  // --- Поступление / маршрутизация ---
+  sourceChannel      String
+  receivedAtDgd      DateTime?
+  receivedAtKau      DateTime?
+  registrationNumber String?
+  redirectNumber     String?
+  forwardedToOp      Boolean   @default(false)
+  forwardedToOpAt    DateTime?
+
+  // --- Заявитель ---
+  lastName       String
+  firstName      String?
+  middleName     String?
+  birthDate      DateTime?
+  position       String?
+  address        String?
+  district       String?
+  email          String?
+  phone          String?
+  socialHandle   String?
+  isCollective   Boolean   @default(false)
+  signatoryCount Int?
+
+  // --- Суть обращения ---
+  goal           String
+  description    String?
+  category       String
+  targetAudience String?
+
+  // --- Решение ---
+  concept        String?
+  actionPlan     String?
+  resolutionPath String?
+  controlDate    DateTime?
+  dzSentAt       DateTime?
+  replySentAt    DateTime?
+  result         String?
+  resolvedAt     DateTime?
+
+  // --- Ответственность по регламенту ---
+  gratitudeSent     Boolean   @default(false)
+  gratitudeSentAt   DateTime?
+  mediaCoverageSent Boolean   @default(false)
+  mediaCoverageAt   DateTime?
+
+  stage     String   @default("IN_PROGRESS") // IN_PROGRESS | CANCELLED | REFUSED | APPLICANT_DECLINED | RESOLVED
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  responsible AppealResponsible[]
+  events      AppealEvent[]
+
+  @@map("appeals")
+}
+
+// Явная связная таблица (а не просто FK), чтобы в будущем можно было
+// передавать обращение другому ответственному, сохраняя историю.
+model AppealResponsible {
+  id         String   @id @default(cuid())
+  appeal     Appeal   @relation(fields: [appealId], references: [id], onDelete: Cascade)
+  appealId   String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  isCurrent  Boolean  @default(true)
+  assignedAt DateTime @default(now())
+
+  @@index([appealId])
+  @@index([userId])
+  @@map("appeal_responsibles")
+}
+
+// Полная история взаимодействия по обращению (требование регламента).
+model AppealEvent {
+  id        String   @id @default(cuid())
+  appeal    Appeal   @relation(fields: [appealId], references: [id], onDelete: Cascade)
+  appealId  String
+  author    User?    @relation(fields: [authorId], references: [id])
+  authorId  String?
+  type      String // STAGE_CHANGE | NOTE | DZ_SENT | REPLY_SENT | APPLICANT_INFORMED | GRATITUDE | MEDIA | CREATED
+  message   String
+  createdAt DateTime @default(now())
+
+  @@index([appealId])
+  @@map("appeal_events")
+}
