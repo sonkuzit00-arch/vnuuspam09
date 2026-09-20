@@ -26,6 +26,29 @@ npm run dev
 - `kau@dgd.local` — КАУ (видит общий свод и отчёты)
 - `elena@dgd.local` — сотрудник (видит только личный кабинет)
 
+## Деплой на Railway (публичная ссылка)
+
+Railway запускает приложение как обычный Node-процесс с диском — наш SQLite
+работает без переделки на Postgres. Шаги:
+
+1. На [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub repo**
+   → выбрать `sonkuzit00-arch/vnuuspam09`, ветку `claude/eloquent-noether-05ycbx`
+   (или `main`, после мёрджа). Railway сам распознает Next.js через Nixpacks
+   и подхватит `railway.toml` (команда запуска: `npm run deploy:start` —
+   применяет миграции, сидит демо-данные и стартует сервер).
+2. **Обязательно добавить Volume**, иначе база будет стираться при каждом
+   передеплое: в настройках сервиса → **Volumes** → **New Volume**,
+   mount path `/data`.
+3. Задать переменные окружения (Settings → Variables):
+   - `DATABASE_URL` = `file:/data/dev.db` (путь внутри примонтированного volume)
+   - `NEXTAUTH_SECRET` = случайная строка (сгенерировать: `openssl rand -base64 32`)
+   - `NEXTAUTH_URL` = публичный домен, который выдаст Railway после первого
+     деплоя, например `https://vnuuspam09-production.up.railway.app`
+     (можно сначала задеплоить, скопировать домен из Settings → Networking,
+     затем вписать сюда и передеплоить ещё раз)
+4. Deploy. После первого успешного запуска откроется публичная ссылка вида
+   `https://<project>.up.railway.app/login` с демо-доступом из раздела выше.
+
 ## Структура
 
 - `src/app/(app)/page.tsx` — личный кабинет сотрудника
