@@ -17,14 +17,15 @@ export async function getMyTasks(userId: string) {
   });
 }
 
-/** Обращения, которые КАУ ещё не промаршрутизировала (resolutionPath пуст). */
-export async function getAppealsNeedingRouting(userId: string) {
+/**
+ * Обращения без маршрута (resolutionPath пуст) — их может промаршрутизировать
+ * любой, кто выполняет роль КАУ по факту (Бабаханова, а также Кузнецова и
+ * Астафьева как админы), независимо от того, на кого сейчас формально
+ * записан ответственный.
+ */
+export async function getAppealsNeedingRouting() {
   return prisma.appeal.findMany({
-    where: {
-      resolutionPath: null,
-      stage: "IN_PROGRESS",
-      responsible: { some: { userId, isCurrent: true } },
-    },
+    where: { resolutionPath: null, stage: "IN_PROGRESS" },
     orderBy: { createdAt: "asc" },
     include: { responsible: { include: { user: true }, where: { isCurrent: true } } },
   });

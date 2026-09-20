@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { createAppealSchema } from "@/lib/schemas";
-import { STAGE_LABELS, TASK_STATUS_LABELS, READ_ONLY_ROLES } from "@/lib/constants";
+import { STAGE_LABELS, TASK_STATUS_LABELS, READ_ONLY_ROLES, EDIT_BLOCKED_ROLES } from "@/lib/constants";
 
 async function requireUser() {
   const session = await auth();
@@ -13,11 +13,11 @@ async function requireUser() {
   return session.user;
 }
 
-/** Наблюдатели (VIEWER) видят общий свод/отчёты, но не могут ничего менять. */
+/** Наблюдатель и согласующий (Свинарева, Чижов) не создают и не редактируют обращения. */
 async function requireEditor() {
   const user = await requireUser();
-  if ((READ_ONLY_ROLES as readonly string[]).includes(user.role)) {
-    throw new Error("Роль «Наблюдатель» доступна только для просмотра");
+  if ((EDIT_BLOCKED_ROLES as readonly string[]).includes(user.role)) {
+    throw new Error("Эта роль доступна только для просмотра / согласования");
   }
   return user;
 }
@@ -224,8 +224,21 @@ export async function createAppealTask(appealId: string, assigneeId: string, des
   revalidatePath("/summary");
 }
 
+/**
+ * Статус поручения может менять исполнитель/постановщик/админ/КАУ; согласующий
+ * (APPROVER, напр. Чижов) — только по своим поручениям, это и есть его
+ * единственное действие в системе (согласование).
+ */
 export async function updateTaskStatus(taskId: string, status: string) {
-  const user = await requireEditor();
+  const user = await requireUser();
+  if ((READ_ONLY_ROLES as readonly string[]).includes(user.role)) {
+    throw new Error("Роль «Наблюдатель» доступна только для просмотра");
+  }
+
+  const existing = await prisma.appealTask.findUniqueOrThrow({ where: { id: taskId } });
+  if (user.role === "APPROVER" && existing.assigneeId !== user.id) {
+    throw new Error("Можно согласовывать только поручения, адресованные вам");
+  }
 
   const task = await prisma.appealTask.update({
     where: { id: taskId },

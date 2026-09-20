@@ -32,6 +32,7 @@ import {
   RESOLUTION_PATHS,
   ROLE_LABELS,
   TASK_STATUS_LABELS,
+  EDIT_BLOCKED_ROLES,
 } from "@/lib/constants";
 import { isOverdue } from "@/lib/sla";
 import { cn } from "@/lib/utils";
@@ -83,7 +84,10 @@ export function AppealDetail({
   const [taskAssignee, setTaskAssignee] = useState("");
   const [taskDescription, setTaskDescription] = useState("");
   const overdue = isOverdue(appeal);
-  const readOnly = currentUser.role === "VIEWER";
+  // Наблюдатель и согласующий не редактируют обращение — согласующему при
+  // этом отдельно, ниже, разрешено отмечать статус СВОИХ поручений.
+  const readOnly = (EDIT_BLOCKED_ROLES as readonly string[]).includes(currentUser.role);
+  const canActOnTasks = currentUser.role !== "VIEWER";
   const canRoute = currentUser.role === "KAU" || currentUser.role === "ADMIN";
 
   const responsible = appeal.responsible.find((r) => r.isCurrent)?.user ?? appeal.responsible[0]?.user;
@@ -310,28 +314,30 @@ export function AppealDetail({
                     </div>
                     <p className="text-sm text-[var(--foreground)]/80">{task.description}</p>
                     <p className="text-xs text-[var(--muted)]">{fmt(task.createdAt)}</p>
-                    {!readOnly && task.status !== "DONE" && (
-                      <div className="mt-1 flex gap-2">
-                        {task.status === "PENDING" && (
+                    {canActOnTasks &&
+                      task.status !== "DONE" &&
+                      (currentUser.role !== "APPROVER" || task.assigneeId === currentUser.id) && (
+                        <div className="mt-1 flex gap-2">
+                          {task.status === "PENDING" && currentUser.role !== "APPROVER" && (
+                            <button
+                              type="button"
+                              disabled={pending}
+                              onClick={() => setTaskStatus(task.id, "IN_PROGRESS")}
+                              className="rounded-md bg-[var(--surface-2)] px-2.5 py-1 text-xs font-medium hover:bg-[var(--surface-3)]"
+                            >
+                              Взять в работу
+                            </button>
+                          )}
                           <button
                             type="button"
                             disabled={pending}
-                            onClick={() => setTaskStatus(task.id, "IN_PROGRESS")}
-                            className="rounded-md bg-[var(--surface-2)] px-2.5 py-1 text-xs font-medium hover:bg-[var(--surface-3)]"
+                            onClick={() => setTaskStatus(task.id, "DONE")}
+                            className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500"
                           >
-                            Взять в работу
+                            {currentUser.role === "APPROVER" ? "Согласовать" : "Выполнено"}
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          disabled={pending}
-                          onClick={() => setTaskStatus(task.id, "DONE")}
-                          className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500"
-                        >
-                          Выполнено
-                        </button>
-                      </div>
-                    )}
+                        </div>
+                      )}
                   </div>
                 ))}
               </div>

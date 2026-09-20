@@ -128,11 +128,14 @@ export const STAGE_LABELS: Record<(typeof STAGES)[number], string> = {
 };
 
 // Роли ровно по команде ДГД:
-// ADMIN — полный доступ + видят, кому как делегируются задачи (Кузнецова, Астафьева)
+// ADMIN — полный доступ, маршрутизируют и назначают ответственных наравне с КАУ
+//         (Кузнецова, Астафьева), видят, кому как делегируются задачи
 // KAU — принимает и маршрутизирует все входящие обращения (Бабаханова)
 // GD, GR, OP, BTL_BF — рабочие подразделения, видят только свой кабинет
-// VIEWER — только просмотр результатов/общего свода, без права редактировать
-export const ROLES = ["ADMIN", "KAU", "GD", "GR", "OP", "BTL_BF", "VIEWER"] as const;
+// APPROVER — только согласовывает адресованные ему поручения, больше ничего
+//            не редактирует (Чижов)
+// VIEWER — только просмотр результатов/общего свода, вообще без действий (Свинарева)
+export const ROLES = ["ADMIN", "KAU", "GD", "GR", "OP", "BTL_BF", "APPROVER", "VIEWER"] as const;
 
 export const ROLE_LABELS: Record<(typeof ROLES)[number], string> = {
   ADMIN: "Администратор",
@@ -141,14 +144,24 @@ export const ROLE_LABELS: Record<(typeof ROLES)[number], string> = {
   GR: "GR",
   OP: "ОП",
   BTL_BF: "BTL / БФ",
+  APPROVER: "Согласующий",
   VIEWER: "Наблюдатель",
 };
 
 // Роли, которым доступны общий свод и отчёты (не только свой кабинет).
-export const MANAGEMENT_ROLES = ["ADMIN", "KAU", "VIEWER"] as const;
+export const MANAGEMENT_ROLES = ["ADMIN", "KAU", "APPROVER", "VIEWER"] as const;
 
-// Роли без права редактировать/создавать обращения — только просмотр.
+// Полностью без действий — только просмотр (личный кабинет им недоступен).
 export const READ_ONLY_ROLES = ["VIEWER"] as const;
+
+// Не могут создавать/редактировать обращения, менять маршрут, передавать
+// ответственного или ставить новые поручения. APPROVER — исключение из этого
+// списка только для статуса СВОИХ поручений (см. updateTaskStatus).
+export const EDIT_BLOCKED_ROLES = ["VIEWER", "APPROVER"] as const;
+
+// Могут назначать формат ответа/маршрут и переназначать ответственного —
+// т.е. выполняют роль КАУ по факту (Бабаханова + оба администратора).
+export const ROUTING_ROLES = ["KAU", "ADMIN"] as const;
 
 export const TASK_STATUSES = ["PENDING", "IN_PROGRESS", "DONE"] as const;
 

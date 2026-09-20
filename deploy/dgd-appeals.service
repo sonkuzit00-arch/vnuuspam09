@@ -1,0 +1,26 @@
+# Юнит для запуска БЕЗ Docker — обычным Node-процессом на внутреннем сервере.
+#
+# Установка:
+#   sudo cp deploy/dgd-appeals.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now dgd-appeals
+#
+# Перед этим: склонировать репозиторий в /opt/dgd-appeals, положить туда
+# заполненный .env (см. .env.example), выполнить `npm ci && npm run build`
+# от имени пользователя www-data (или своего сервисного пользователя).
+
+[Unit]
+Description=Обращения ДГД — внутренний сервис учёта обращений
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/dgd-appeals
+EnvironmentFile=/opt/dgd-appeals/.env
+ExecStart=/usr/bin/npm run deploy:start
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

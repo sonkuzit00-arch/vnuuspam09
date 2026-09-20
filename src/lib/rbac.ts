@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { MANAGEMENT_ROLES, READ_ONLY_ROLES } from "@/lib/constants";
+import { MANAGEMENT_ROLES, READ_ONLY_ROLES, EDIT_BLOCKED_ROLES } from "@/lib/constants";
 
 /** Общий свод и отчёты видят КАУ, админы и наблюдатели — рабочие роли только свой кабинет. */
 export async function requireManagementRole() {
@@ -12,4 +12,9 @@ export async function requireManagementRole() {
 
 export function isReadOnly(role: string) {
   return (READ_ONLY_ROLES as readonly string[]).includes(role);
+}
+
+/** Не может редактировать обращения/ставить поручения (может видеть, наблюдатель — и согласующий). */
+export function isEditBlocked(role: string) {
+  return (EDIT_BLOCKED_ROLES as readonly string[]).includes(role);
 }

@@ -14,12 +14,12 @@ import {
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { ROLE_LABELS, MANAGEMENT_ROLES } from "@/lib/constants";
+import { ROLE_LABELS, MANAGEMENT_ROLES, EDIT_BLOCKED_ROLES } from "@/lib/constants";
 
 type ShellUser = { id: string; name?: string | null; email?: string | null; role: string };
 
 const NAV = [
-  { href: "/", label: "Личный кабинет", icon: Inbox, roles: ["ADMIN", "KAU", "GD", "GR", "OP", "BTL_BF"] },
+  { href: "/", label: "Личный кабинет", icon: Inbox, roles: ["ADMIN", "KAU", "GD", "GR", "OP", "BTL_BF", "APPROVER"] },
   { href: "/summary", label: "Общий свод", icon: LayoutGrid, roles: [...MANAGEMENT_ROLES] },
   { href: "/reports", label: "Отчёты", icon: FileBarChart, roles: [...MANAGEMENT_ROLES] },
 ];
@@ -78,7 +78,7 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
             );
           })}
 
-          {user.role !== "VIEWER" && (
+          {!(EDIT_BLOCKED_ROLES as readonly string[]).includes(user.role) && (
             <Link
               href="/appeals/new"
               className="mt-3 flex items-center gap-2.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-violet-500"

@@ -3,7 +3,8 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
-// Команда ровно как в ТЗ: ОП, КАУ, ГД×2, GR, BTL/БФ, два наблюдателя, два администратора.
+// Команда ровно как в ТЗ: ОП, КАУ, ГД×2, GR, BTL/БФ, согласующий, наблюдатель,
+// два администратора.
 const USERS = [
   { name: "Христенко Яна Юрьевна", email: "yana@dgd.local", role: "OP" },
   { name: "Бабаханова Виктория", email: "victoria@dgd.local", role: "KAU" },
@@ -12,12 +13,15 @@ const USERS = [
   { name: "Ковешникова Елена Вячеславовна", email: "elena.k@dgd.local", role: "GR" },
   { name: "Путиева Татьяна Викторовна", email: "tatiana@dgd.local", role: "BTL_BF" },
   { name: "Свинарева Елена", email: "elena.s@dgd.local", role: "VIEWER" },
-  { name: "Чижов Сергей Викторович", email: "sergey@dgd.local", role: "VIEWER" },
+  { name: "Чижов Сергей Викторович", email: "sergey@dgd.local", role: "APPROVER" },
   { name: "Астафьева Ирина", email: "irina@dgd.local", role: "ADMIN" },
 ] as const;
 
 async function main() {
-  const passwordHash = await bcrypt.hash("demo1234", 10);
+  // На внутреннем сервере переопределите пароль переменной окружения перед
+  // первым запуском сидирования: SEED_PASSWORD=... npm run db:seed
+  const password = process.env.SEED_PASSWORD || "demo1234";
+  const passwordHash = await bcrypt.hash(password, 10);
 
   const byEmail: Record<string, Awaited<ReturnType<typeof prisma.user.upsert>>> = {};
   for (const u of USERS) {
@@ -34,6 +38,7 @@ async function main() {
   const milana = byEmail["milana@dgd.local"]; // ГД
   const yana = byEmail["yana@dgd.local"]; // ОП
   const tatiana = byEmail["tatiana@dgd.local"]; // BTL/БФ
+  const sergey = byEmail["sergey@dgd.local"]; // согласующий (Чижов)
 
   const existing = await prisma.appeal.count();
   if (existing > 0) {
@@ -63,8 +68,11 @@ async function main() {
     },
   });
 
-  // 2. Полный пример цепочки из ТЗ: КАУ маршрутизирует как ДЗ и передаёт GR
-  // на проработку стратегии; GR поручает ГД написать и зарегистрировать запрос.
+  // 2. Полный пример цепочки согласования: КАУ маршрутизирует как ДЗ и
+  // передаёт GR на проработку стратегии → GR поручает ГД написать запрос →
+  // автор направляет запрос GR на согласование → GR согласовывает и вносит
+  // правки → автор направляет итоговый текст на согласование Чижову →
+  // Чижов (только согласовывает) утверждает.
   const appeal2 = await prisma.appeal.create({
     data: {
       sourceChannel: "ГД: Электронная почта",
@@ -91,18 +99,40 @@ async function main() {
           { type: "CREATED", message: "Обращение зарегистрировано (ГД: Электронная почта)", authorId: victoria.id, createdAt: daysAgo(6) },
           { type: "STAGE_CHANGE", message: "КАУ: маршрут — «Депутатский запрос (ДЗ)»", authorId: victoria.id, createdAt: daysAgo(6) },
           { type: "STAGE_CHANGE", message: "Обращение передано: Ковешникова Елена Вячеславовна", authorId: victoria.id, createdAt: daysAgo(5) },
-          { type: "NOTE", message: `Поручение для ${sofia.name}: подготовить и направить депутатский запрос, зарегистрировать в САДД, присвоить номер`, authorId: elena.id, createdAt: daysAgo(5) },
+          { type: "NOTE", message: `Поручение для ${sofia.name}: подготовить текст депутатского запроса`, authorId: elena.id, createdAt: daysAgo(5) },
+          { type: "NOTE", message: `Поручение для ${elena.name}: согласовать подготовленный текст запроса`, authorId: sofia.id, createdAt: daysAgo(4) },
+          { type: "NOTE", message: "Согласовано с правками: уточнены основания по ст. 22 ФЗ №273-ФЗ", authorId: elena.id, createdAt: daysAgo(3.5) },
+          { type: "NOTE", message: `Поручение для ${sergey.name}: согласовать итоговый текст запроса`, authorId: sofia.id, createdAt: daysAgo(3) },
+          { type: "STAGE_CHANGE", message: "Поручение: статус «Выполнено»", authorId: sergey.id, createdAt: daysAgo(2.5) },
         ],
       },
       tasks: {
-        create: {
-          assignedById: elena.id,
-          assigneeId: sofia.id,
-          description: "Подготовить и направить депутатский запрос, зарегистрировать в САДД, присвоить номер",
-          status: "DONE",
-          createdAt: daysAgo(5),
-          completedAt: daysAgo(3),
-        },
+        create: [
+          {
+            assignedById: elena.id,
+            assigneeId: sofia.id,
+            description: "Подготовить текст депутатского запроса",
+            status: "DONE",
+            createdAt: daysAgo(5),
+            completedAt: daysAgo(4),
+          },
+          {
+            assignedById: sofia.id,
+            assigneeId: elena.id,
+            description: "Согласовать подготовленный текст запроса, при необходимости внести правки",
+            status: "DONE",
+            createdAt: daysAgo(4),
+            completedAt: daysAgo(3.5),
+          },
+          {
+            assignedById: sofia.id,
+            assigneeId: sergey.id,
+            description: "Согласовать итоговый текст запроса перед направлением в министерство",
+            status: "DONE",
+            createdAt: daysAgo(3),
+            completedAt: daysAgo(2.5),
+          },
+        ],
       },
     },
   });

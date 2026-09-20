@@ -15,7 +15,8 @@ const DEMO_ACCOUNTS = [
   { email: "elena.k@dgd.local", role: "GR — Ковешникова Елена" },
   { email: "sofia@dgd.local", role: "Администратор / ГД — Кузнецова Софья" },
   { email: "milana@dgd.local", role: "ГД — Сибирко Милана" },
-  { email: "sergey@dgd.local", role: "Наблюдатель — Чижов Сергей" },
+  { email: "sergey@dgd.local", role: "Согласующий — Чижов Сергей" },
+  { email: "elena.s@dgd.local", role: "Наблюдатель — Свинарева Елена" },
 ];
 
 export default function LoginPage() {

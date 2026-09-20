@@ -14,7 +14,8 @@ export default async function CabinetPage() {
   if (user.role === "VIEWER") redirect("/summary");
 
   const [appeals, myTasks] = await Promise.all([getMyAppeals(user.id), getMyTasks(user.id)]);
-  const needsRouting = user.role === "KAU" ? await getAppealsNeedingRouting(user.id) : [];
+  const needsRouting =
+    user.role === "KAU" || user.role === "ADMIN" ? await getAppealsNeedingRouting() : [];
 
   const overdueCount = appeals.filter(isOverdue).length;
   const resolvedThisMonth = appeals.filter(
@@ -82,7 +83,7 @@ export default async function CabinetPage() {
         </div>
       )}
 
-      {appeals.length === 0 && (
+      {appeals.length === 0 && openTasks.length === 0 && needsRouting.length === 0 && (
         <div className="rounded-2xl border border-dashed border-[var(--border)] p-10 text-center text-sm text-[var(--muted)]">
           Пока нет обращений, назначенных вам.
         </div>
