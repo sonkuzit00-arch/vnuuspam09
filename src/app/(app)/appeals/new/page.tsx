@@ -1,6 +1,6 @@
 import { getUsers } from "@/lib/queries";
 import { createAppeal } from "@/lib/actions";
-import { SOURCE_CHANNELS, DISTRICTS, CATEGORIES, TARGET_AUDIENCES, DEFAULT_RESPONSIBLE_BY_CHANNEL } from "@/lib/constants";
+import { SOURCE_CHANNEL_GROUPS, DISTRICTS, CATEGORIES, TARGET_AUDIENCES, DEFAULT_RESPONSIBLE_NAME, ROLE_LABELS } from "@/lib/constants";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 
 export default async function NewAppealPage() {
   const users = await getUsers();
-  const defaultByName = Object.values(DEFAULT_RESPONSIBLE_BY_CHANNEL);
+  const defaultResponsible = users.find((u) => u.name === DEFAULT_RESPONSIBLE_NAME);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -32,18 +32,23 @@ export default async function NewAppealPage() {
               <Label htmlFor="sourceChannel">Источник *</Label>
               <NativeSelect id="sourceChannel" name="sourceChannel" required defaultValue="">
                 <option value="" disabled>Выберите источник</option>
-                {SOURCE_CHANNELS.map((c) => (
-                  <option key={c} value={c}>{c}</option>
+                {Object.entries(SOURCE_CHANNEL_GROUPS).map(([group, channels]) => (
+                  <optgroup key={group} label={group}>
+                    {channels.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </optgroup>
                 ))}
               </NativeSelect>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="responsibleId">Ответственный *</Label>
-              <NativeSelect id="responsibleId" name="responsibleId" required defaultValue="">
+              <NativeSelect id="responsibleId" name="responsibleId" required defaultValue={defaultResponsible?.id ?? ""}>
                 <option value="" disabled>Выберите ответственного</option>
                 {users.map((u) => (
                   <option key={u.id} value={u.id}>
-                    {u.name}{defaultByName.includes(u.name) ? " · по умолчанию для канала" : ""}
+                    {u.name} · {ROLE_LABELS[u.role as keyof typeof ROLE_LABELS] ?? u.role}
+                    {u.id === defaultResponsible?.id ? " (КАУ, по умолчанию)" : ""}
                   </option>
                 ))}
               </NativeSelect>

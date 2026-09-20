@@ -11,9 +11,11 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 
 const DEMO_ACCOUNTS = [
-  { email: "admin@dgd.local", role: "Администратор" },
-  { email: "kau@dgd.local", role: "КАУ" },
-  { email: "elena@dgd.local", role: "Сотрудник (Ковешникова Е.В.)" },
+  { email: "victoria@dgd.local", role: "КАУ — Бабаханова Виктория" },
+  { email: "elena.k@dgd.local", role: "GR — Ковешникова Елена" },
+  { email: "sofia@dgd.local", role: "Администратор / ГД — Кузнецова Софья" },
+  { email: "milana@dgd.local", role: "ГД — Сибирко Милана" },
+  { email: "sergey@dgd.local", role: "Наблюдатель — Чижов Сергей" },
 ];
 
 export default function LoginPage() {

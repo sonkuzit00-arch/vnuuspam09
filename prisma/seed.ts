@@ -3,47 +3,37 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
-const EMPLOYEES = [
-  { name: "Ковешникова Елена Вячеславовна", email: "elena@dgd.local" },
-  { name: "Кузнецова Софья", email: "sofia@dgd.local" },
-  { name: "Христенко Яна Юрьевна", email: "yana@dgd.local" },
-  { name: "Сибирко Милана", email: "milana@dgd.local" },
-  { name: "Путиева Татьяна Викторовна", email: "tatiana@dgd.local" },
-  { name: "Родионова Анастасия Сергеевна", email: "anastasia@dgd.local" },
-  { name: "Константинов Кирилл Константинович", email: "kirill@dgd.local" },
-  { name: "Карташева Екатерина Анатольевна", email: "ekaterina@dgd.local" },
-  { name: "Бражникова Влада Витальевна", email: "vlada@dgd.local" },
-  { name: "Черкасов Владимир Нальдович", email: "vladimir@dgd.local" },
-  { name: "Новикова Любовь Игоревна", email: "lyubov@dgd.local" },
-  { name: "Дашкова Виктория", email: "viktoria@dgd.local" },
-];
+// Команда ровно как в ТЗ: ОП, КАУ, ГД×2, GR, BTL/БФ, два наблюдателя, два администратора.
+const USERS = [
+  { name: "Христенко Яна Юрьевна", email: "yana@dgd.local", role: "OP" },
+  { name: "Бабаханова Виктория", email: "victoria@dgd.local", role: "KAU" },
+  { name: "Сибирко Милана", email: "milana@dgd.local", role: "GD" },
+  { name: "Кузнецова Софья Викторовна", email: "sofia@dgd.local", role: "ADMIN" },
+  { name: "Ковешникова Елена Вячеславовна", email: "elena.k@dgd.local", role: "GR" },
+  { name: "Путиева Татьяна Викторовна", email: "tatiana@dgd.local", role: "BTL_BF" },
+  { name: "Свинарева Елена", email: "elena.s@dgd.local", role: "VIEWER" },
+  { name: "Чижов Сергей Викторович", email: "sergey@dgd.local", role: "VIEWER" },
+  { name: "Астафьева Ирина", email: "irina@dgd.local", role: "ADMIN" },
+] as const;
 
 async function main() {
   const passwordHash = await bcrypt.hash("demo1234", 10);
 
-  const admin = await prisma.user.upsert({
-    where: { email: "admin@dgd.local" },
-    update: {},
-    create: { name: "Администратор", email: "admin@dgd.local", passwordHash, role: "ADMIN" },
-  });
-
-  const kau = await prisma.user.upsert({
-    where: { email: "kau@dgd.local" },
-    update: {},
-    create: { name: "Бабаханова Виктория (КАУ)", email: "kau@dgd.local", passwordHash, role: "KAU" },
-  });
-
-  const employeeUsers = [];
-  for (const e of EMPLOYEES) {
-    const u = await prisma.user.upsert({
-      where: { email: e.email },
-      update: {},
-      create: { name: e.name, email: e.email, passwordHash, role: "EMPLOYEE" },
+  const byEmail: Record<string, Awaited<ReturnType<typeof prisma.user.upsert>>> = {};
+  for (const u of USERS) {
+    byEmail[u.email] = await prisma.user.upsert({
+      where: { email: u.email },
+      update: { name: u.name, role: u.role },
+      create: { name: u.name, email: u.email, passwordHash, role: u.role },
     });
-    employeeUsers.push(u);
   }
 
-  const [elena, sofia, yana, milana, tatiana, anastasia] = employeeUsers;
+  const victoria = byEmail["victoria@dgd.local"]; // КАУ
+  const elena = byEmail["elena.k@dgd.local"]; // GR
+  const sofia = byEmail["sofia@dgd.local"]; // ГД / админ
+  const milana = byEmail["milana@dgd.local"]; // ГД
+  const yana = byEmail["yana@dgd.local"]; // ОП
+  const tatiana = byEmail["tatiana@dgd.local"]; // BTL/БФ
 
   const existing = await prisma.appeal.count();
   if (existing > 0) {
@@ -55,166 +45,152 @@ async function main() {
   const daysAgo = (n: number) => new Date(Date.now() - n * 24 * 60 * 60 * 1000);
   const daysAhead = (n: number) => new Date(Date.now() + n * 24 * 60 * 60 * 1000);
 
-  const sample = [
-    {
-      sourceChannel: "Соц.сети ДГД",
+  // 1. Свежее обращение — ещё не промаршрутизировано, лежит у КАУ.
+  const appeal1 = await prisma.appeal.create({
+    data: {
+      sourceChannel: "ГД: СЭД «Дело» (САДД)",
+      receivedAtDgd: daysAgo(0),
+      receivedAtKau: daysAgo(0),
       lastName: "Наумов", firstName: "Илья", middleName: "Сергеевич",
       address: "г. Воронеж, ул. Верхняя, д. 71",
       phone: "89102480149",
       goal: "Содействовать восстановлению электроснабжения в СНТ после аварии на кабельной линии",
-      description: "Заявитель сообщает о длительных перебоях электроснабжения в СНТ из-за повреждённого магистрального кабеля; просит содействия в организации технологического присоединения к сетям с достаточной мощностью.",
       category: "Электроснабжение",
-      targetAudience: "ЦА Строительство",
       district: "Центральный",
       stage: "IN_PROGRESS",
-      responsible: elena,
-      concept: "Направить депутатский запрос в министерство энергетики и сетевую организацию для уточнения сроков технологического присоединения",
-      actionPlan: "1) Запрос в Минэнерго ВО — до 25 числа. 2) Запрос в сетевую компанию — до 25 числа. 3) Контроль ответа — начало следующего месяца.",
-      controlDate: daysAhead(4),
-      registrationNumber: "ЧСВ-5/612",
+      responsible: { create: { userId: victoria.id } },
+      events: { create: { type: "CREATED", message: "Обращение зарегистрировано (ГД: СЭД «Дело» (САДД))", authorId: victoria.id } },
     },
-    {
-      sourceChannel: "Думская почта ДГД",
-      lastName: "Коллективное обращение", firstName: null, middleName: null,
+  });
+
+  // 2. Полный пример цепочки из ТЗ: КАУ маршрутизирует как ДЗ и передаёт GR
+  // на проработку стратегии; GR поручает ГД написать и зарегистрировать запрос.
+  const appeal2 = await prisma.appeal.create({
+    data: {
+      sourceChannel: "ГД: Электронная почта",
+      receivedAtDgd: daysAgo(6),
+      receivedAtKau: daysAgo(6),
+      lastName: "Коллективное обращение",
       address: "с. Стадница, Семилукский район",
       isCollective: true, signatoryCount: 80,
       goal: "Сохранить возможность обучения детей в сельской школе, не допустить закрытия здания",
-      description: "Родители обучающихся просят не закрывать здание школы в селе по экономическим причинам.",
       category: "Общее образование",
-      targetAudience: "ЦА Общее образование",
       district: "Рамонский",
-      stage: "RESOLVED",
-      responsible: elena,
-      concept: "Запросить официальную позицию администрации района и министерства образования",
-      actionPlan: "Депутатский запрос → получение ответа → информирование заявителей",
-      result: "Получен официальный ответ министерства образования, заявители проинформированы о принятом решении",
-      resolvedAt: daysAgo(10),
-      gratitudeSent: true,
-    },
-    {
-      sourceChannel: "Сайт ОП",
-      lastName: "Степанов", firstName: "Алексей", middleName: "Вениаминович",
-      email: "alex@example.com",
-      goal: "Обустроить пешеходную инфраструктуру в частном секторе рядом со школой",
-      description: "Жители просят обустроить тротуар для безопасности детей на пути в школу.",
-      category: "Дороги",
-      targetAudience: "ЦА Транспорт",
-      district: "Ленинский",
       stage: "IN_PROGRESS",
-      responsible: yana,
-      concept: "Направить депутатский запрос в министерство дорожной деятельности",
-      actionPlan: "Запрос в министерство → запрос главе города → контроль сроков",
-      controlDate: daysAgo(2),
-      registrationNumber: "ЧСВ-4/192",
+      resolutionPath: "Депутатский запрос (ДЗ)",
+      routingTarget: "Министерство образования Воронежской области",
+      registrationNumber: "ЧСВ-5/612",
+      responsible: {
+        create: [
+          { userId: victoria.id, isCurrent: false, assignedAt: daysAgo(6) },
+          { userId: elena.id, isCurrent: true, assignedAt: daysAgo(5) },
+        ],
+      },
+      events: {
+        create: [
+          { type: "CREATED", message: "Обращение зарегистрировано (ГД: Электронная почта)", authorId: victoria.id, createdAt: daysAgo(6) },
+          { type: "STAGE_CHANGE", message: "КАУ: маршрут — «Депутатский запрос (ДЗ)»", authorId: victoria.id, createdAt: daysAgo(6) },
+          { type: "STAGE_CHANGE", message: "Обращение передано: Ковешникова Елена Вячеславовна", authorId: victoria.id, createdAt: daysAgo(5) },
+          { type: "NOTE", message: `Поручение для ${sofia.name}: подготовить и направить депутатский запрос, зарегистрировать в САДД, присвоить номер`, authorId: elena.id, createdAt: daysAgo(5) },
+        ],
+      },
+      tasks: {
+        create: {
+          assignedById: elena.id,
+          assigneeId: sofia.id,
+          description: "Подготовить и направить депутатский запрос, зарегистрировать в САДД, присвоить номер",
+          status: "DONE",
+          createdAt: daysAgo(5),
+          completedAt: daysAgo(3),
+        },
+      },
     },
-    {
-      sourceChannel: "Соц.сети ОП",
+  });
+  void appeal2;
+
+  // 3. Типовой ответ, быстро закрыт ГД (Сибирко).
+  const appeal3 = await prisma.appeal.create({
+    data: {
+      sourceChannel: "ГД: Соц.сети — комментарии",
+      receivedAtDgd: daysAgo(9), receivedAtKau: daysAgo(9),
+      lastName: "Степанов", firstName: "Алексей", middleName: "Вениаминович",
+      goal: "Обустроить пешеходную инфраструктуру в частном секторе рядом со школой",
+      category: "Дороги",
+      district: "Ленинский",
+      stage: "RESOLVED",
+      resolutionPath: "Типовой ответ с разъяснением",
+      responsible: { create: { userId: milana.id, assignedAt: daysAgo(8) } },
+      result: "Направлен типовой ответ с разъяснением норм по благоустройству и сроков",
+      resolvedAt: daysAgo(2),
+      gratitudeSent: true,
+      events: {
+        create: [
+          { type: "CREATED", message: "Обращение зарегистрировано (ГД: Соц.сети — комментарии)", authorId: victoria.id, createdAt: daysAgo(9) },
+          { type: "STAGE_CHANGE", message: "КАУ: маршрут — «Типовой ответ с разъяснением»", authorId: victoria.id, createdAt: daysAgo(9) },
+          { type: "STAGE_CHANGE", message: "Обращение передано: Сибирко Милана", authorId: victoria.id, createdAt: daysAgo(8) },
+          { type: "STAGE_CHANGE", message: "Статус изменён на «Решено»", authorId: milana.id, createdAt: daysAgo(2) },
+        ],
+      },
+    },
+  });
+  void appeal3;
+
+  // 4. ОП — перенаправление профильному комитету, просрочено.
+  const appeal4 = await prisma.appeal.create({
+    data: {
+      sourceChannel: "Сайт ОП",
+      receivedAtDgd: daysAgo(4), receivedAtKau: daysAgo(4),
       lastName: "Борискина", firstName: "Наталья", middleName: "Викторовна",
       email: "boriskina@example.com", phone: "89042126871",
-      goal: "Остановить застройку водоохранной зоны, инициировать изменения в законодательство",
-      description: "Заявитель просит остановить застройку в зоне затопления и инициировать поправки в Земельный и Водный кодексы.",
+      goal: "Остановить застройку водоохранной зоны",
       category: "Гражданско-правовая консультация",
-      targetAudience: "ЦА Строительство",
       district: "Центральный",
-      stage: "RESOLVED",
-      responsible: sofia,
-      concept: "Юридическая консультация + мониторинг профильного законопроекта",
-      actionPlan: "Разъяснение права на судебную защиту, отслеживание прохождения законопроекта в Госдуме",
-      result: "Заявителю разъяснён порядок судебной защиты, законопроект принят и подписан",
-      resolvedAt: daysAgo(5),
-      mediaCoverageSent: true,
-    },
-    {
-      sourceChannel: "Рабочая поездка ДГД",
-      lastName: "Степанищева", firstName: "Елена", middleName: "Владимировна",
-      goal: "Провести капитальный ремонт сельского дома культуры",
-      description: "Жители района просят включить капремонт СДК в программу на ближайший период.",
-      category: "Кап.ремонт",
-      targetAudience: "ЦА Культура",
-      district: "Грибановский",
       stage: "IN_PROGRESS",
-      responsible: elena,
-      concept: "Депутатский запрос в министерство культуры о включении объекта в программу капремонта",
-      controlDate: daysAhead(1),
+      resolutionPath: "Перенаправление профильному комитету",
+      routingTarget: "Комитет по природным ресурсам и экологии",
+      controlDate: daysAgo(1),
+      responsible: { create: { userId: yana.id, assignedAt: daysAgo(4) } },
+      events: {
+        create: [
+          { type: "CREATED", message: "Обращение зарегистрировано (Сайт ОП)", authorId: victoria.id, createdAt: daysAgo(4) },
+          { type: "STAGE_CHANGE", message: "КАУ: маршрут — «Перенаправление профильному комитету»", authorId: victoria.id, createdAt: daysAgo(4) },
+          { type: "STAGE_CHANGE", message: "Обращение передано: Христенко Яна Юрьевна", authorId: victoria.id, createdAt: daysAgo(4) },
+        ],
+      },
     },
-    {
-      sourceChannel: "Почта КЦ",
+  });
+  void appeal4;
+
+  // 5. БТЛ/БФ — материальная помощь у Путиевой (2 подразделения на одном человеке).
+  const appeal5 = await prisma.appeal.create({
+    data: {
+      sourceChannel: "Соц.сети БФ",
+      receivedAtDgd: daysAgo(2), receivedAtKau: daysAgo(2),
       lastName: "Орлова", firstName: "Марина", middleName: "Петровна",
       phone: "89204567890",
       goal: "Оказать материальную помощь многодетной семье",
       category: "Материальная помощь",
-      targetAudience: "ЦА Социальный Фонд России и социальная защита",
       district: "Аннинский",
       stage: "IN_PROGRESS",
-      responsible: tatiana,
       resolutionPath: "БФ",
-      controlDate: daysAgo(1),
-    },
-    {
-      sourceChannel: "Соц.сети ДГД",
-      lastName: "Гришин", firstName: "Олег", middleName: null,
-      goal: "Просьба разбить сквер во дворе — заявитель впоследствии отозвал обращение",
-      category: "Благоустройство",
-      district: "Поворинский",
-      stage: "APPLICANT_DECLINED",
-      responsible: anastasia,
-      result: "Заявитель отозвал обращение",
-    },
-    {
-      sourceChannel: "ОП online",
-      lastName: "Милованов", firstName: "Пётр", middleName: "Иванович",
-      goal: "Провести проверку вывоза ТКО в микрорайоне",
-      category: "Твёрдые коммунальные отходы (ТКО) / вывоз мусора",
-      district: "Железнодорожный",
-      stage: "IN_PROGRESS",
-      responsible: milana,
-      controlDate: daysAgo(3),
-    },
-  ] as const;
-
-  for (const s of sample) {
-    await prisma.appeal.create({
-      data: {
-        sourceChannel: s.sourceChannel,
-        receivedAtDgd: daysAgo(12),
-        receivedAtKau: daysAgo(12),
-        registrationNumber: "registrationNumber" in s ? s.registrationNumber : undefined,
-        lastName: s.lastName,
-        firstName: s.firstName ?? undefined,
-        middleName: s.middleName ?? undefined,
-        address: "address" in s ? s.address : undefined,
-        phone: "phone" in s ? s.phone : undefined,
-        email: "email" in s ? s.email : undefined,
-        isCollective: "isCollective" in s ? s.isCollective : false,
-        signatoryCount: "signatoryCount" in s ? s.signatoryCount : undefined,
-        goal: s.goal,
-        description: "description" in s ? s.description : undefined,
-        category: s.category,
-        targetAudience: "targetAudience" in s ? s.targetAudience : undefined,
-        district: s.district,
-        stage: s.stage,
-        concept: "concept" in s ? s.concept : undefined,
-        actionPlan: "actionPlan" in s ? s.actionPlan : undefined,
-        resolutionPath: "resolutionPath" in s ? s.resolutionPath : undefined,
-        result: "result" in s ? s.result : undefined,
-        controlDate: "controlDate" in s ? s.controlDate : undefined,
-        resolvedAt: "resolvedAt" in s ? s.resolvedAt : undefined,
-        gratitudeSent: "gratitudeSent" in s ? s.gratitudeSent : false,
-        mediaCoverageSent: "mediaCoverageSent" in s ? s.mediaCoverageSent : false,
-        responsible: { create: { userId: s.responsible.id } },
-        events: {
-          create: [
-            { type: "CREATED", message: `Обращение зарегистрировано (${s.sourceChannel})`, authorId: kau.id },
-            ...(s.stage === "RESOLVED"
-              ? [{ type: "STAGE_CHANGE", message: "Статус изменён на «Решено»", authorId: s.responsible.id }]
-              : []),
-          ],
-        },
+      controlDate: daysAhead(2),
+      responsible: { create: { userId: tatiana.id, assignedAt: daysAgo(2) } },
+      events: {
+        create: [
+          { type: "CREATED", message: "Обращение зарегистрировано (Соц.сети БФ)", authorId: victoria.id, createdAt: daysAgo(2) },
+          { type: "STAGE_CHANGE", message: "КАУ: маршрут — «БФ»", authorId: victoria.id, createdAt: daysAgo(2) },
+          { type: "STAGE_CHANGE", message: "Обращение передано: Путиева Татьяна Викторовна", authorId: victoria.id, createdAt: daysAgo(2) },
+        ],
       },
-    });
-  }
+    },
+  });
+  void appeal5;
 
-  console.log("Сид завершён:", { admin: admin.email, kau: kau.email, employees: employeeUsers.length, appeals: sample.length });
+  console.log("Сид завершён:", {
+    users: USERS.length,
+    appeals: 5,
+    needRouting: appeal1.id,
+  });
 }
 
 main()

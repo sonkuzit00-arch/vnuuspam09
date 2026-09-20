@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { createAppealSchema } from "@/lib/schemas";
-import { STAGE_LABELS } from "@/lib/constants";
+import { STAGE_LABELS, TASK_STATUS_LABELS, READ_ONLY_ROLES } from "@/lib/constants";
 
 async function requireUser() {
   const session = await auth();
@@ -13,8 +13,17 @@ async function requireUser() {
   return session.user;
 }
 
-export async function createAppeal(formData: FormData) {
+/** Наблюдатели (VIEWER) видят общий свод/отчёты, но не могут ничего менять. */
+async function requireEditor() {
   const user = await requireUser();
+  if ((READ_ONLY_ROLES as readonly string[]).includes(user.role)) {
+    throw new Error("Роль «Наблюдатель» доступна только для просмотра");
+  }
+  return user;
+}
+
+export async function createAppeal(formData: FormData) {
+  const user = await requireEditor();
 
   const raw = Object.fromEntries(formData.entries());
   const cleaned = Object.fromEntries(
@@ -69,7 +78,7 @@ export async function createAppeal(formData: FormData) {
 }
 
 export async function updateAppealStage(appealId: string, stage: string) {
-  const user = await requireUser();
+  const user = await requireEditor();
 
   await prisma.appeal.update({
     where: { id: appealId },
@@ -92,7 +101,7 @@ export async function updateAppealStage(appealId: string, stage: string) {
 }
 
 export async function addAppealNote(appealId: string, message: string) {
-  const user = await requireUser();
+  const user = await requireEditor();
   if (!message.trim()) return;
 
   await prisma.appealEvent.create({
@@ -108,6 +117,7 @@ export async function updateAppealFields(
     concept: string;
     actionPlan: string;
     resolutionPath: string;
+    routingTarget: string;
     result: string;
     controlDate: string;
     gratitudeSent: boolean;
@@ -117,14 +127,18 @@ export async function updateAppealFields(
     redirectNumber: string;
   }>
 ) {
-  const user = await requireUser();
+  const user = await requireEditor();
 
   const data: Record<string, unknown> = {};
   const events: { type: string; message: string; authorId: string }[] = [];
 
   if (fields.concept !== undefined) data.concept = fields.concept;
   if (fields.actionPlan !== undefined) data.actionPlan = fields.actionPlan;
-  if (fields.resolutionPath !== undefined) data.resolutionPath = fields.resolutionPath;
+  if (fields.resolutionPath !== undefined) {
+    data.resolutionPath = fields.resolutionPath;
+    events.push({ type: "STAGE_CHANGE", message: `КАУ: маршрут — «${fields.resolutionPath}»`, authorId: user.id });
+  }
+  if (fields.routingTarget !== undefined) data.routingTarget = fields.routingTarget;
   if (fields.result !== undefined) data.result = fields.result;
   if (fields.registrationNumber !== undefined) data.registrationNumber = fields.registrationNumber;
   if (fields.redirectNumber !== undefined) data.redirectNumber = fields.redirectNumber;
@@ -152,6 +166,82 @@ export async function updateAppealFields(
   });
 
   revalidatePath(`/appeals/${appealId}`);
+  revalidatePath("/");
+  revalidatePath("/summary");
+}
+
+/** Передать обращение целиком другому ответственному (напр. КАУ → GR). */
+export async function reassignResponsible(appealId: string, newResponsibleId: string) {
+  const user = await requireEditor();
+
+  const newResponsible = await prisma.user.findUniqueOrThrow({ where: { id: newResponsibleId } });
+
+  await prisma.$transaction([
+    prisma.appealResponsible.updateMany({
+      where: { appealId, isCurrent: true },
+      data: { isCurrent: false },
+    }),
+    prisma.appealResponsible.create({
+      data: { appealId, userId: newResponsibleId },
+    }),
+    prisma.appealEvent.create({
+      data: {
+        appealId,
+        authorId: user.id,
+        type: "STAGE_CHANGE",
+        message: `Обращение передано: ${newResponsible.name}`,
+      },
+    }),
+  ]);
+
+  revalidatePath(`/appeals/${appealId}`);
+  revalidatePath("/");
+  revalidatePath("/summary");
+}
+
+/** Поручение по обращению — не меняет ответственного, просто ставит задачу конкретному человеку. */
+export async function createAppealTask(appealId: string, assigneeId: string, description: string) {
+  const user = await requireEditor();
+  if (!description.trim()) throw new Error("Опишите поручение");
+
+  const assignee = await prisma.user.findUniqueOrThrow({ where: { id: assigneeId } });
+
+  await prisma.appealTask.create({
+    data: { appealId, assignedById: user.id, assigneeId, description },
+  });
+
+  await prisma.appealEvent.create({
+    data: {
+      appealId,
+      authorId: user.id,
+      type: "NOTE",
+      message: `Поручение для ${assignee.name}: ${description}`,
+    },
+  });
+
+  revalidatePath(`/appeals/${appealId}`);
+  revalidatePath("/");
+  revalidatePath("/summary");
+}
+
+export async function updateTaskStatus(taskId: string, status: string) {
+  const user = await requireEditor();
+
+  const task = await prisma.appealTask.update({
+    where: { id: taskId },
+    data: { status, completedAt: status === "DONE" ? new Date() : null },
+  });
+
+  await prisma.appealEvent.create({
+    data: {
+      appealId: task.appealId,
+      authorId: user.id,
+      type: "STAGE_CHANGE",
+      message: `Поручение: статус «${TASK_STATUS_LABELS[status as keyof typeof TASK_STATUS_LABELS] ?? status}»`,
+    },
+  });
+
+  revalidatePath(`/appeals/${task.appealId}`);
   revalidatePath("/");
   revalidatePath("/summary");
 }

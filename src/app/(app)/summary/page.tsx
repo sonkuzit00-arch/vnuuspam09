@@ -1,14 +1,23 @@
-import { getAllAppeals, getUsers } from "@/lib/queries";
+import Link from "next/link";
+import { getAllAppeals, getUsers, getAllTasks } from "@/lib/queries";
 import { requireManagementRole } from "@/lib/rbac";
 import { StatTile } from "@/components/stat-tile";
 import { AppealListItem } from "@/components/appeal-list-item";
 import { isOverdue } from "@/lib/sla";
 import { Inbox, AlertTriangle, Award, Megaphone } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { TASK_STATUS_LABELS } from "@/lib/constants";
+
+const TASK_BADGE: Record<string, "secondary" | "warning" | "success"> = {
+  PENDING: "secondary",
+  IN_PROGRESS: "warning",
+  DONE: "success",
+};
 
 export default async function SummaryPage() {
   await requireManagementRole();
-  const [appeals, users] = await Promise.all([getAllAppeals(), getUsers()]);
+  const [appeals, users, tasks] = await Promise.all([getAllAppeals(), getUsers(), getAllTasks()]);
 
   const overdue = appeals.filter(isOverdue);
   const thisMonth = new Date().getMonth();
@@ -106,6 +115,40 @@ export default async function SummaryPage() {
               </tr>
             </tbody>
           </table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Кому как делегируются задачи</CardTitle>
+          <CardDescription>Поручения по всем обращениям — кто кому что поручил и в каком статусе</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {tasks.length === 0 ? (
+            <p className="text-sm text-[var(--muted)]">Поручений пока не было.</p>
+          ) : (
+            <div className="flex flex-col divide-y divide-[var(--border)]">
+              {tasks.map((task) => (
+                <Link
+                  key={task.id}
+                  href={`/appeals/${task.appealId}`}
+                  className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm hover:bg-[var(--surface-2)]"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium">
+                      {task.assignedBy.name} → {task.assignee.name}
+                    </p>
+                    <p className="truncate text-xs text-[var(--muted)]">
+                      {task.description} · {task.appeal.lastName} {task.appeal.firstName ?? ""}
+                    </p>
+                  </div>
+                  <Badge variant={TASK_BADGE[task.status] ?? "secondary"}>
+                    {TASK_STATUS_LABELS[task.status as keyof typeof TASK_STATUS_LABELS] ?? task.status}
+                  </Badge>
+                </Link>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 

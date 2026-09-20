@@ -8,6 +8,28 @@ export async function getMyAppeals(userId: string) {
   });
 }
 
+/** Поручения, назначенные конкретному человеку (не обязательно он — ответственный за обращение). */
+export async function getMyTasks(userId: string) {
+  return prisma.appealTask.findMany({
+    where: { assigneeId: userId },
+    orderBy: { createdAt: "desc" },
+    include: { appeal: true, assignedBy: true },
+  });
+}
+
+/** Обращения, которые КАУ ещё не промаршрутизировала (resolutionPath пуст). */
+export async function getAppealsNeedingRouting(userId: string) {
+  return prisma.appeal.findMany({
+    where: {
+      resolutionPath: null,
+      stage: "IN_PROGRESS",
+      responsible: { some: { userId, isCurrent: true } },
+    },
+    orderBy: { createdAt: "asc" },
+    include: { responsible: { include: { user: true }, where: { isCurrent: true } } },
+  });
+}
+
 export async function getAllAppeals() {
   return prisma.appeal.findMany({
     orderBy: { updatedAt: "desc" },
@@ -21,7 +43,17 @@ export async function getAppeal(id: string) {
     include: {
       responsible: { include: { user: true } },
       events: { orderBy: { createdAt: "desc" }, include: { author: true } },
+      tasks: { orderBy: { createdAt: "asc" }, include: { assignedBy: true, assignee: true } },
     },
+  });
+}
+
+/** Полная лента поручений по всей команде — «кому как делегируются задачи». */
+export async function getAllTasks() {
+  return prisma.appealTask.findMany({
+    orderBy: { createdAt: "desc" },
+    include: { appeal: true, assignedBy: true, assignee: true },
+    take: 100,
   });
 }
 

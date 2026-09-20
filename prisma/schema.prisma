@@ -16,11 +16,13 @@ model User {
   name         String
   email        String   @unique
   passwordHash String
-  role         String   @default("EMPLOYEE") // EMPLOYEE | KAU | ADMIN
+  role         String   @default("GD") // ADMIN | KAU | GD | GR | OP | BTL_BF | VIEWER
   createdAt    DateTime @default(now())
 
-  appeals AppealResponsible[]
-  events  AppealEvent[]
+  appeals       AppealResponsible[]
+  events        AppealEvent[]
+  tasksAssigned AppealTask[]        @relation("TasksAssigned")
+  tasksReceived AppealTask[]        @relation("TasksReceived")
 
   @@map("users")
 }
@@ -60,7 +62,8 @@ model Appeal {
   // --- Решение ---
   concept        String?
   actionPlan     String?
-  resolutionPath String?
+  resolutionPath String? // формат ответа/маршрут, назначает КАУ при триаже
+  routingTarget  String? // кому конкретно (депутат/комитет), если resolutionPath — перенаправление
   controlDate    DateTime?
   dzSentAt       DateTime?
   replySentAt    DateTime?
@@ -79,6 +82,7 @@ model Appeal {
 
   responsible AppealResponsible[]
   events      AppealEvent[]
+  tasks       AppealTask[]
 
   @@map("appeals")
 }
@@ -112,4 +116,26 @@ model AppealEvent {
 
   @@index([appealId])
   @@map("appeal_events")
+}
+
+// Поручение по обращению: кто кому и что поручил (цепочка делегирования,
+// например КАУ → GR «проработать стратегию» → GD «направить запрос и
+// зарегистрировать в САДД»). Не меняет текущего ответственного за
+// обращение — это отдельная, более гранулярная задача внутри него.
+model AppealTask {
+  id           String    @id @default(cuid())
+  appeal       Appeal    @relation(fields: [appealId], references: [id], onDelete: Cascade)
+  appealId     String
+  assignedBy   User      @relation("TasksAssigned", fields: [assignedById], references: [id])
+  assignedById String
+  assignee     User      @relation("TasksReceived", fields: [assigneeId], references: [id])
+  assigneeId   String
+  description  String
+  status       String    @default("PENDING") // PENDING | IN_PROGRESS | DONE
+  createdAt    DateTime  @default(now())
+  completedAt  DateTime?
+
+  @@index([appealId])
+  @@index([assigneeId])
+  @@map("appeal_tasks")
 }

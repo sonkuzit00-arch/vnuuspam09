@@ -14,14 +14,14 @@ import {
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { ROLE_LABELS } from "@/lib/constants";
+import { ROLE_LABELS, MANAGEMENT_ROLES } from "@/lib/constants";
 
 type ShellUser = { id: string; name?: string | null; email?: string | null; role: string };
 
 const NAV = [
-  { href: "/", label: "Личный кабинет", icon: Inbox, roles: ["EMPLOYEE", "KAU", "ADMIN"] },
-  { href: "/summary", label: "Общий свод", icon: LayoutGrid, roles: ["KAU", "ADMIN"] },
-  { href: "/reports", label: "Отчёты", icon: FileBarChart, roles: ["KAU", "ADMIN"] },
+  { href: "/", label: "Личный кабинет", icon: Inbox, roles: ["ADMIN", "KAU", "GD", "GR", "OP", "BTL_BF"] },
+  { href: "/summary", label: "Общий свод", icon: LayoutGrid, roles: [...MANAGEMENT_ROLES] },
+  { href: "/reports", label: "Отчёты", icon: FileBarChart, roles: [...MANAGEMENT_ROLES] },
 ];
 
 function initials(name?: string | null) {
@@ -78,13 +78,15 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
             );
           })}
 
-          <Link
-            href="/appeals/new"
-            className="mt-3 flex items-center gap-2.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-violet-500"
-          >
-            <PlusCircle className="h-4 w-4" />
-            Новое обращение
-          </Link>
+          {user.role !== "VIEWER" && (
+            <Link
+              href="/appeals/new"
+              className="mt-3 flex items-center gap-2.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-violet-500"
+            >
+              <PlusCircle className="h-4 w-4" />
+              Новое обращение
+            </Link>
+          )}
         </nav>
 
         <div className="flex items-center gap-2.5 border-t border-[var(--border)] p-4">
