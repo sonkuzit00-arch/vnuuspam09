@@ -1,17 +1,18 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { getMyAppeals, getMyTasks, getAppealsNeedingRouting } from "@/lib/queries";
+import { getMyAppeals, getMyTasks, getAppealsNeedingRouting, getMediaCoverageAppeals } from "@/lib/queries";
 import { StatTile } from "@/components/stat-tile";
 import { AppealListItem } from "@/components/appeal-list-item";
 import { TaskListItem } from "@/components/task-list-item";
 import { STAGE_LABELS, STAGES } from "@/lib/constants";
 import { isOverdue } from "@/lib/sla";
-import { Inbox, AlertTriangle, CheckCircle2, Clock3, Route } from "lucide-react";
+import { Inbox, AlertTriangle, CheckCircle2, Clock3, Route, Megaphone } from "lucide-react";
 
 export default async function CabinetPage() {
   const session = await auth();
   const user = session!.user;
   if (user.role === "VIEWER") redirect("/summary");
+  if (user.role === "PRESS") return <PressCabinet />;
 
   const [appeals, myTasks] = await Promise.all([getMyAppeals(user.id), getMyTasks(user.id)]);
   const needsRouting =
@@ -108,6 +109,42 @@ export default async function CabinetPage() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** Пресс-служба (Боровкова) видит только обращения с отметкой «Освещено в СМИ». */
+async function PressCabinet() {
+  const appeals = await getMediaCoverageAppeals();
+  const thisMonth = appeals.filter(
+    (a) => a.mediaCoverageAt && a.mediaCoverageAt.getMonth() === new Date().getMonth()
+  ).length;
+
+  return (
+    <div className="mx-auto flex max-w-6xl flex-col gap-8">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Освещение в СМИ</h1>
+        <p className="mt-1 text-sm text-[var(--muted)]">
+          Обращения, по которым отмечено освещение в средствах массовой информации.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <StatTile label="Всего с освещением" value={appeals.length} icon={<Megaphone className="h-4 w-4" />} accent="violet" />
+        <StatTile label="За этот месяц" value={thisMonth} icon={<CheckCircle2 className="h-4 w-4" />} accent="emerald" />
+      </div>
+
+      {appeals.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-[var(--border)] p-10 text-center text-sm text-[var(--muted)]">
+          Пока нет обращений с отметкой «Освещено в СМИ».
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+          {appeals.map((appeal) => (
+            <AppealListItem key={appeal.id} appeal={appeal} showResponsible />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

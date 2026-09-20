@@ -45,7 +45,17 @@ export async function getAppeal(id: string) {
       responsible: { include: { user: true } },
       events: { orderBy: { createdAt: "desc" }, include: { author: true } },
       tasks: { orderBy: { createdAt: "asc" }, include: { assignedBy: true, assignee: true } },
+      outgoingNumbers: { orderBy: { createdAt: "asc" } },
     },
+  });
+}
+
+/** Обращения с отметкой «Освещено в СМИ» — единственное, что видит пресс-служба. */
+export async function getMediaCoverageAppeals() {
+  return prisma.appeal.findMany({
+    where: { mediaCoverageSent: true },
+    orderBy: { mediaCoverageAt: "desc" },
+    include: { responsible: { include: { user: true }, where: { isCurrent: true } } },
   });
 }
 

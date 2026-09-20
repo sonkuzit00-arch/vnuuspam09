@@ -16,7 +16,7 @@ model User {
   name         String
   email        String   @unique
   passwordHash String
-  role         String   @default("GD") // ADMIN | KAU | GD | GR | OP | BTL_BF | VIEWER
+  role         String   @default("GD") // ADMIN | KAU | GD | GR | OP | BTL_BF | APPROVER | PRESS | VIEWER
   createdAt    DateTime @default(now())
 
   appeals       AppealResponsible[]
@@ -32,10 +32,10 @@ model Appeal {
 
   // --- Поступление / маршрутизация ---
   sourceChannel      String
+  subject            String? // тема письма
   receivedAtDgd      DateTime?
   receivedAtKau      DateTime?
-  registrationNumber String?
-  redirectNumber     String?
+  registrationNumber String? // номер входящего в САДД
   forwardedToOp      Boolean   @default(false)
   forwardedToOpAt    DateTime?
 
@@ -60,15 +60,16 @@ model Appeal {
   targetAudience String?
 
   // --- Решение ---
-  concept        String?
-  actionPlan     String?
-  resolutionPath String? // формат ответа/маршрут, назначает КАУ при триаже
-  routingTarget  String? // кому конкретно (депутат/комитет), если resolutionPath — перенаправление
-  controlDate    DateTime?
-  dzSentAt       DateTime?
-  replySentAt    DateTime?
-  result         String?
-  resolvedAt     DateTime?
+  concept              String?
+  actionPlan           String?
+  resolutionPath       String? // формат ответа/маршрут, назначает КАУ при триаже
+  routingTarget        String? // кому конкретно (депутат/комитет), если resolutionPath — перенаправление
+  controlDate          DateTime?
+  dzSentAt             DateTime?
+  replySentAt          DateTime?
+  replyNumberToCitizen String? // номер ответа гражданину
+  result               String?
+  resolvedAt           DateTime?
 
   // --- Ответственность по регламенту ---
   gratitudeSent     Boolean   @default(false)
@@ -80,9 +81,10 @@ model Appeal {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  responsible AppealResponsible[]
-  events      AppealEvent[]
-  tasks       AppealTask[]
+  responsible     AppealResponsible[]
+  events          AppealEvent[]
+  tasks           AppealTask[]
+  outgoingNumbers AppealOutgoingNumber[]
 
   @@map("appeals")
 }
@@ -138,4 +140,24 @@ model AppealTask {
   @@index([appealId])
   @@index([assigneeId])
   @@map("appeal_tasks")
+}
+
+// Исходящий документ по обращению (перенаправление, депутатский запрос —
+// их может быть несколько на одно обращение) вместе с результатом ответа
+// органа власти: когда пришёл, краткая суть, оказано содействие или нет.
+model AppealOutgoingNumber {
+  id       String  @id @default(cuid())
+  appeal   Appeal  @relation(fields: [appealId], references: [id], onDelete: Cascade)
+  appealId String
+  number   String
+  label    String? // куда направлено / что за документ
+
+  responseReceivedAt DateTime?
+  responseSummary    String? // краткая суть ответа органа власти
+  assistanceProvided Boolean? // оказано содействие: true/false, null — ответа ещё нет
+
+  createdAt DateTime @default(now())
+
+  @@index([appealId])
+  @@map("appeal_outgoing_numbers")
 }

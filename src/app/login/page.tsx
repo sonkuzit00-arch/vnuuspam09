@@ -16,6 +16,7 @@ const DEMO_ACCOUNTS = [
   { email: "sofia@dgd.local", role: "Администратор / ГД — Кузнецова Софья" },
   { email: "milana@dgd.local", role: "ГД — Сибирко Милана" },
   { email: "sergey@dgd.local", role: "Согласующий — Чижов Сергей" },
+  { email: "natalya@dgd.local", role: "Пресс-служба — Боровкова Наталья" },
   { email: "elena.s@dgd.local", role: "Наблюдатель — Свинарева Елена" },
 ];
 

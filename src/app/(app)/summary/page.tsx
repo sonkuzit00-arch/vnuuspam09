@@ -4,10 +4,11 @@ import { requireManagementRole } from "@/lib/rbac";
 import { StatTile } from "@/components/stat-tile";
 import { AppealListItem } from "@/components/appeal-list-item";
 import { isOverdue } from "@/lib/sla";
-import { Inbox, AlertTriangle, Award, Megaphone } from "lucide-react";
+import { Inbox, AlertTriangle, Award, Megaphone, Timer, BarChart3 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TASK_STATUS_LABELS } from "@/lib/constants";
+import { TASK_STATUS_LABELS, getChannelGroup, SOURCE_CHANNEL_GROUPS } from "@/lib/constants";
+import { DailyVolumeChart, PersonResultsChart, ChannelGroupChart } from "@/components/charts";
 
 const TASK_BADGE: Record<string, "secondary" | "warning" | "success"> = {
   PENDING: "secondary",
@@ -31,6 +32,48 @@ export default async function SummaryPage() {
 
   const employees = users.filter((u) => u.role !== "ADMIN");
   const sources = Array.from(new Set(appeals.map((a) => a.sourceChannel))).sort();
+
+  // --- Количественный анализ: динамика по дням (14 дней) ---
+  const DAYS = 14;
+  const dayLabels: string[] = [];
+  const dayKeys: string[] = [];
+  for (let i = DAYS - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    dayKeys.push(d.toISOString().slice(0, 10));
+    dayLabels.push(d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" }));
+  }
+  const dailyVolume = dayKeys.map((key, i) => ({
+    label: dayLabels[i],
+    count: appeals.filter((a) => a.createdAt.toISOString().slice(0, 10) === key).length,
+  }));
+  const avgPerDay = appeals.length ? (dailyVolume.reduce((s, d) => s + d.count, 0) / DAYS) : 0;
+
+  // --- Качественный анализ: среднее время на обращение (решённые) ---
+  const resolvedWithDuration = appeals.filter((a) => a.stage === "RESOLVED" && a.resolvedAt);
+  const avgResolutionDays = resolvedWithDuration.length
+    ? resolvedWithDuration.reduce((s, a) => s + (a.resolvedAt!.getTime() - a.createdAt.getTime()) / 86_400_000, 0) /
+      resolvedWithDuration.length
+    : 0;
+
+  // --- Срез по каждому участнику: решено / в работе / просрочено ---
+  const personResults = employees
+    .map((e) => {
+      const mine = appeals.filter((a) => a.responsible.some((r) => r.isCurrent && r.userId === e.id));
+      return {
+        name: e.name,
+        resolved: mine.filter((a) => a.stage === "RESOLVED").length,
+        overdue: mine.filter(isOverdue).length,
+        inProgress: mine.filter((a) => a.stage === "IN_PROGRESS" && !isOverdue(a)).length,
+      };
+    })
+    .filter((p) => p.resolved + p.inProgress + p.overdue > 0);
+
+  // --- Каналы объединяются по хэштегу (ГД и т.д.) независимо от подканала ---
+  const channelGroupCounts = Object.keys(SOURCE_CHANNEL_GROUPS).map((group) => ({
+    group,
+    count: appeals.filter((a) => getChannelGroup(a.sourceChannel) === group).length,
+  }));
 
   const matrix = sources.map((source) => {
     const row: Record<string, number> = {};
@@ -75,6 +118,66 @@ export default async function SummaryPage() {
           </div>
         </div>
       )}
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <StatTile
+          label="Среднее время на обращение, дней"
+          value={avgResolutionDays}
+          decimals={1}
+          icon={<Timer className="h-4 w-4" />}
+          accent="violet"
+        />
+        <StatTile
+          label="В среднем обращений в день"
+          value={avgPerDay}
+          decimals={1}
+          icon={<BarChart3 className="h-4 w-4" />}
+          accent="amber"
+        />
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Поступление обращений по дням</CardTitle>
+          <CardDescription>Последние {DAYS} дней, все каналы вместе</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DailyVolumeChart data={dailyVolume} />
+        </CardContent>
+      </Card>
+
+      {personResults.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Результаты по каждому участнику</CardTitle>
+            <CardDescription>Решено / в работе / просрочено — по текущим ответственным</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <div className="flex flex-wrap gap-4 text-xs text-[var(--muted)]">
+              <span className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--chart-good)" }} /> решено
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--muted)" }} /> в работе
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--chart-critical)" }} /> просрочено
+              </span>
+            </div>
+            <PersonResultsChart data={personResults} />
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Обращения по группам каналов</CardTitle>
+          <CardDescription>Все каналы «ГД; …» объединены в один хэштег независимо от подканала</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ChannelGroupChart data={channelGroupCounts} />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

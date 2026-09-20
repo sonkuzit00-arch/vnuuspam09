@@ -52,6 +52,13 @@ export default async function NewAppealPage() {
                   </option>
                 ))}
               </NativeSelect>
+              <p className="text-xs text-[var(--muted)]">
+                По умолчанию — КАУ, но можно сразу поставить любого ответственного.
+              </p>
+            </div>
+            <div className="flex flex-col gap-1.5 sm:col-span-2">
+              <Label htmlFor="subject">Тема письма</Label>
+              <Input id="subject" name="subject" placeholder="Как обращение озаглавлено в письме/САДД" />
             </div>
           </CardContent>
         </Card>

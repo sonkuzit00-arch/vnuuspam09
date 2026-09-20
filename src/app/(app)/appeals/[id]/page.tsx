@@ -7,6 +7,8 @@ export default async function AppealPage({ params }: { params: Promise<{ id: str
   const { id } = await params;
   const [appeal, users, session] = await Promise.all([getAppeal(id), getUsers(), auth()]);
   if (!appeal) notFound();
+  // Пресс-служба видит только обращения, отмеченные «Освещено в СМИ».
+  if (session!.user.role === "PRESS" && !appeal.mediaCoverageSent) notFound();
 
   return <AppealDetail appeal={appeal} users={users} currentUser={session!.user} />;
 }

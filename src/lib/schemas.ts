@@ -10,6 +10,7 @@ import {
 
 export const createAppealSchema = z.object({
   sourceChannel: z.enum(SOURCE_CHANNELS),
+  subject: z.string().optional(),
   lastName: z.string().min(1, "Укажите фамилию заявителя"),
   firstName: z.string().optional(),
   middleName: z.string().optional(),

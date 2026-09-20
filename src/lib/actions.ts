@@ -44,6 +44,7 @@ export async function createAppeal(formData: FormData) {
   const appeal = await prisma.appeal.create({
     data: {
       sourceChannel: data.sourceChannel,
+      subject: data.subject,
       receivedAtDgd: now,
       receivedAtKau: now,
       lastName: data.lastName,
@@ -114,17 +115,19 @@ export async function addAppealNote(appealId: string, message: string) {
 export async function updateAppealFields(
   appealId: string,
   fields: Partial<{
+    subject: string;
     concept: string;
     actionPlan: string;
     resolutionPath: string;
     routingTarget: string;
     result: string;
     controlDate: string;
+    receivedAtDgd: string;
     gratitudeSent: boolean;
     mediaCoverageSent: boolean;
     forwardedToOp: boolean;
     registrationNumber: string;
-    redirectNumber: string;
+    replyNumberToCitizen: string;
   }>
 ) {
   const user = await requireEditor();
@@ -132,6 +135,7 @@ export async function updateAppealFields(
   const data: Record<string, unknown> = {};
   const events: { type: string; message: string; authorId: string }[] = [];
 
+  if (fields.subject !== undefined) data.subject = fields.subject;
   if (fields.concept !== undefined) data.concept = fields.concept;
   if (fields.actionPlan !== undefined) data.actionPlan = fields.actionPlan;
   if (fields.resolutionPath !== undefined) {
@@ -141,9 +145,12 @@ export async function updateAppealFields(
   if (fields.routingTarget !== undefined) data.routingTarget = fields.routingTarget;
   if (fields.result !== undefined) data.result = fields.result;
   if (fields.registrationNumber !== undefined) data.registrationNumber = fields.registrationNumber;
-  if (fields.redirectNumber !== undefined) data.redirectNumber = fields.redirectNumber;
+  if (fields.replyNumberToCitizen !== undefined) data.replyNumberToCitizen = fields.replyNumberToCitizen;
   if (fields.controlDate !== undefined) {
     data.controlDate = fields.controlDate ? new Date(fields.controlDate) : null;
+  }
+  if (fields.receivedAtDgd !== undefined) {
+    data.receivedAtDgd = fields.receivedAtDgd ? new Date(fields.receivedAtDgd) : null;
   }
   if (fields.gratitudeSent !== undefined) {
     data.gratitudeSent = fields.gratitudeSent;
@@ -257,4 +264,56 @@ export async function updateTaskStatus(taskId: string, status: string) {
   revalidatePath(`/appeals/${task.appealId}`);
   revalidatePath("/");
   revalidatePath("/summary");
+}
+
+/** Добавить исходящий номер (перенаправление, депутатский запрос…) — их может быть несколько. */
+export async function addOutgoingNumber(appealId: string, number: string, label?: string) {
+  const user = await requireEditor();
+  if (!number.trim()) throw new Error("Укажите номер исходящего");
+
+  await prisma.appealOutgoingNumber.create({
+    data: { appealId, number, label: label || undefined },
+  });
+
+  await prisma.appealEvent.create({
+    data: {
+      appealId,
+      authorId: user.id,
+      type: "NOTE",
+      message: `Исходящий №${number}${label ? ` (${label})` : ""}`,
+    },
+  });
+
+  revalidatePath(`/appeals/${appealId}`);
+}
+
+/** Зафиксировать результат ответа органа власти по конкретному исходящему. */
+export async function updateOutgoingNumberResult(
+  outgoingId: string,
+  fields: Partial<{ responseReceivedAt: string; responseSummary: string; assistanceProvided: boolean | null }>
+) {
+  const user = await requireEditor();
+
+  const data: Record<string, unknown> = {};
+  if (fields.responseReceivedAt !== undefined) {
+    data.responseReceivedAt = fields.responseReceivedAt ? new Date(fields.responseReceivedAt) : null;
+  }
+  if (fields.responseSummary !== undefined) data.responseSummary = fields.responseSummary;
+  if (fields.assistanceProvided !== undefined) data.assistanceProvided = fields.assistanceProvided;
+
+  const outgoing = await prisma.appealOutgoingNumber.update({ where: { id: outgoingId }, data });
+
+  if (fields.assistanceProvided !== undefined) {
+    const verdict = fields.assistanceProvided === true ? "содействие оказано" : fields.assistanceProvided === false ? "содействие не оказано" : "результат не определён";
+    await prisma.appealEvent.create({
+      data: {
+        appealId: outgoing.appealId,
+        authorId: user.id,
+        type: "NOTE",
+        message: `Ответ по исходящему №${outgoing.number}: ${verdict}`,
+      },
+    });
+  }
+
+  revalidatePath(`/appeals/${outgoing.appealId}`);
 }

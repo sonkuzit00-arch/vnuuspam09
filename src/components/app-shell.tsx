@@ -19,7 +19,7 @@ import { ROLE_LABELS, MANAGEMENT_ROLES, EDIT_BLOCKED_ROLES } from "@/lib/constan
 type ShellUser = { id: string; name?: string | null; email?: string | null; role: string };
 
 const NAV = [
-  { href: "/", label: "Личный кабинет", icon: Inbox, roles: ["ADMIN", "KAU", "GD", "GR", "OP", "BTL_BF", "APPROVER"] },
+  { href: "/", label: "Личный кабинет", icon: Inbox, roles: ["ADMIN", "KAU", "GD", "GR", "OP", "BTL_BF", "APPROVER", "PRESS"] },
   { href: "/summary", label: "Общий свод", icon: LayoutGrid, roles: [...MANAGEMENT_ROLES] },
   { href: "/reports", label: "Отчёты", icon: FileBarChart, roles: [...MANAGEMENT_ROLES] },
 ];

@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { StageBadge } from "@/components/stage-badge";
+import { OutgoingNumbers } from "@/components/outgoing-numbers";
 import {
   STAGES,
   STAGE_LABELS,
@@ -449,16 +450,38 @@ export function AppealDetail({
             </CardHeader>
             <CardContent className="flex flex-col gap-3 text-sm">
               <EditableField
-                label="Номер в САДД"
+                label="Тема письма"
+                defaultValue={appeal.subject ?? ""}
+                onSave={(v) => handleField({ subject: v })}
+                compact
+                readOnly={readOnly}
+              />
+              <div className="flex flex-col gap-1.5">
+                <Label>Дата поступления</Label>
+                {readOnly ? (
+                  <p className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm">
+                    {appeal.receivedAtDgd ? format(appeal.receivedAtDgd, "d MMMM yyyy", { locale: ru }) : "—"}
+                  </p>
+                ) : (
+                  <Input
+                    type="date"
+                    defaultValue={appeal.receivedAtDgd ? format(appeal.receivedAtDgd, "yyyy-MM-dd") : ""}
+                    onBlur={(e) => handleField({ receivedAtDgd: e.target.value })}
+                  />
+                )}
+              </div>
+              <EditableField
+                label="Номер входящего в САДД"
                 defaultValue={appeal.registrationNumber ?? ""}
                 onSave={(v) => handleField({ registrationNumber: v })}
                 compact
                 readOnly={readOnly}
               />
+              <OutgoingNumbers appealId={appeal.id} items={appeal.outgoingNumbers} readOnly={readOnly} />
               <EditableField
-                label="Номер перенаправления"
-                defaultValue={appeal.redirectNumber ?? ""}
-                onSave={(v) => handleField({ redirectNumber: v })}
+                label="Номер ответа гражданину"
+                defaultValue={appeal.replyNumberToCitizen ?? ""}
+                onSave={(v) => handleField({ replyNumberToCitizen: v })}
                 compact
                 readOnly={readOnly}
               />

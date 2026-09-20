@@ -9,14 +9,21 @@ export function StatTile({
   value,
   accent,
   icon,
+  decimals = 0,
 }: {
   label: string;
   value: number;
   accent?: "violet" | "emerald" | "amber" | "red";
   icon?: React.ReactNode;
+  /** Знаков после запятой (напр. для «дней в среднем»). */
+  decimals?: number;
 }) {
   const spring = useSpring(0, { stiffness: 90, damping: 20 });
-  const display = useTransform(spring, (v) => Math.round(v).toLocaleString("ru-RU"));
+  const display = useTransform(spring, (v) =>
+    decimals > 0
+      ? v.toLocaleString("ru-RU", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+      : Math.round(v).toLocaleString("ru-RU")
+  );
 
   useEffect(() => {
     spring.set(value);
