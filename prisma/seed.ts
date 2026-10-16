@@ -42,6 +42,14 @@ async function main() {
   const tatiana = byEmail["tatiana@dgd.local"]; // BTL/БФ
   const sergey = byEmail["sergey@dgd.local"]; // согласующий (Чижов)
 
+  // Демо-обращения — только по явному запросу (SEED_DEMO_APPEALS=true),
+  // иначе после очистки базы они появлялись бы снова при каждой сборке.
+  if (process.env.SEED_DEMO_APPEALS !== "true") {
+    console.log("Пользователи созданы; демо-обращения не добавляются (SEED_DEMO_APPEALS не true).");
+    await prisma.$disconnect();
+    return;
+  }
+
   const existing = await prisma.appeal.count();
   if (existing > 0) {
     console.log(`Уже есть ${existing} обращений — пропускаю сид демо-данных.`);

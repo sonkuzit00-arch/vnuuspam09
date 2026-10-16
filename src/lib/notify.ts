@@ -15,6 +15,8 @@ export function appUrl(path = "") {
 }
 
 export const emailConfigured = () => Boolean(process.env.SMTP_HOST && process.env.SMTP_FROM);
+/** Общий ящик, куда выгружаются новые обращения и отчёты (APPEALS_EMAIL_TO, можно несколько через запятую). */
+export const appealsMailbox = () => (emailConfigured() && process.env.APPEALS_EMAIL_TO) || "";
 export const telegramConfigured = () => Boolean(process.env.TELEGRAM_BOT_TOKEN);
 
 let transporter: nodemailer.Transporter | undefined;
@@ -37,8 +39,13 @@ export async function sendTelegram(chatId: string, text: string) {
   if (!res.ok) throw new Error(`Telegram ${res.status}: ${await res.text()}`);
 }
 
-export async function sendEmail(to: string, subject: string, text: string) {
-  await getTransporter().sendMail({ from: process.env.SMTP_FROM, to, subject, text });
+export async function sendEmail(
+  to: string,
+  subject: string,
+  text: string,
+  attachments?: { filename: string; content: Buffer }[]
+) {
+  await getTransporter().sendMail({ from: process.env.SMTP_FROM, to, subject, text, attachments });
 }
 
 export type Notification = { subject: string; text: string; link?: string };

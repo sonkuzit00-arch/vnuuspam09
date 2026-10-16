@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { ROLES } from "@/lib/constants";
 import { appUrl, telegramConfigured } from "@/lib/notify";
+import { del } from "@vercel/blob";
 
 type Result = { error?: string; password?: string };
 
@@ -90,4 +91,22 @@ export async function setupTelegramWebhook(): Promise<Result> {
   });
   const data = (await res.json()) as { ok: boolean; description?: string };
   return data.ok ? {} : { error: data.description ?? "Telegram отклонил запрос" };
+}
+
+/** Удалить все обращения вместе с поручениями, историей и файлами. Необратимо. */
+export async function deleteAllAppeals(confirmation: string): Promise<Result & { deleted?: number }> {
+  await requireAdmin();
+  if (confirmation.trim().toUpperCase() !== "УДАЛИТЬ") return { error: "Введите слово УДАЛИТЬ для подтверждения" };
+
+  const blobs = await prisma.appealAttachment.findMany({
+    where: { blobPathname: { not: null } },
+    select: { blobPathname: true },
+  });
+  if (blobs.length && process.env.BLOB_READ_WRITE_TOKEN) {
+    await del(blobs.map((b) => b.blobPathname!));
+  }
+
+  const { count } = await prisma.appeal.deleteMany({});
+  revalidatePath("/", "layout");
+  return { deleted: count };
 }

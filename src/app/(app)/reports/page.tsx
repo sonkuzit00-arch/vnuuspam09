@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { getUsers } from "@/lib/queries";
+import { appealsMailbox } from "@/lib/notify";
+import { EmailReportButton } from "@/components/email-report-button";
 import { CHANNEL_FILTER_OPTIONS, getReportData, parseReportFilters, reportQuery, formatDate } from "@/lib/reports";
 import { requireManagementRole } from "@/lib/rbac";
 import { STAGES, STAGE_LABELS } from "@/lib/constants";
@@ -79,6 +81,7 @@ export default async function ReportsPage({
               <a href={exportHref("csv")}>
                 <Button type="button" variant="ghost">CSV</Button>
               </a>
+              {appealsMailbox() && <EmailReportButton filters={filters} mailbox={appealsMailbox()} />}
             </div>
           </form>
         </CardContent>

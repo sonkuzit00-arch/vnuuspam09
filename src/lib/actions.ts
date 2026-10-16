@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { createAppealSchema } from "@/lib/schemas";
 import { STAGE_LABELS, TASK_STATUS_LABELS, READ_ONLY_ROLES, EDIT_BLOCKED_ROLES } from "@/lib/constants";
-import { notifyUsers } from "@/lib/notify";
+import { notifyUsers, appealsMailbox, sendEmail, appUrl } from "@/lib/notify";
 import { attachmentPrefix, requireAttachmentEditor } from "@/lib/attachments";
 import { del, head } from "@vercel/blob";
 
@@ -80,6 +80,32 @@ export async function createAppeal(formData: FormData) {
       },
     },
   });
+
+  const mailbox = appealsMailbox();
+  if (mailbox) {
+    const responsible = await prisma.user.findUnique({ where: { id: data.responsibleId }, select: { name: true } });
+    const lines = [
+      `Канал: ${appeal.sourceChannel}`,
+      `Заявитель: ${[appeal.lastName, appeal.firstName, appeal.middleName].filter(Boolean).join(" ")}`,
+      appeal.phone && `Телефон: ${appeal.phone}`,
+      appeal.email && `Email: ${appeal.email}`,
+      appeal.district && `Район: ${appeal.district}`,
+      `Категория: ${appeal.category}`,
+      appeal.subject && `Тема: ${appeal.subject}`,
+      `Суть: ${appeal.goal}`,
+      appeal.description && `Описание: ${appeal.description}`,
+      `Ответственный: ${responsible?.name ?? "—"}`,
+      appeal.controlDate && `Контрольный срок: ${appeal.controlDate.toLocaleDateString("ru-RU")}`,
+      `Зарегистрировал(а): ${user.name}`,
+      "",
+      appUrl(`/appeals/${appeal.id}`),
+    ].filter((l): l is string => typeof l === "string");
+    after(() =>
+      sendEmail(mailbox, `Новое обращение: ${appealTitle(appeal)}`, lines.join("\n")).catch((e) =>
+        console.error("Копия обращения на почту не отправлена:", e)
+      )
+    );
+  }
 
   if (data.responsibleId !== user.id) {
     after(() =>

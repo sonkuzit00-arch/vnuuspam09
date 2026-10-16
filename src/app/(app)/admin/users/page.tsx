@@ -3,12 +3,14 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { emailConfigured, telegramConfigured } from "@/lib/notify";
 import { UserAdmin } from "@/components/user-admin";
+import { DeleteAllAppeals } from "@/components/delete-all-appeals";
 
 export default async function AdminUsersPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
   if (session.user.role !== "ADMIN") redirect("/");
 
+  const appealCount = await prisma.appeal.count();
   const users = await prisma.user.findMany({
     orderBy: [{ isActive: "desc" }, { name: "asc" }],
     select: {
@@ -37,6 +39,7 @@ export default async function AdminUsersPage() {
         emailAvailable={emailConfigured()}
         telegramAvailable={telegramConfigured()}
       />
+      <DeleteAllAppeals count={appealCount} />
     </div>
   );
 }
