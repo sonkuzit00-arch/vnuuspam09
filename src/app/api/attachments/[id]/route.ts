@@ -11,10 +11,22 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   const attachment = await prisma.appealAttachment.findUnique({
     where: { id },
-    include: { appeal: { select: { mediaCoverageSent: true } } },
+    include: {
+      appeal: {
+        select: {
+          mediaCoverageSent: true,
+          importStatus: true,
+          responsible: { where: { isCurrent: true }, select: { userId: true } },
+        },
+      },
+    },
   });
   if (!attachment) return new NextResponse("Not found", { status: 404 });
   if (session.user.role === "PRESS" && !attachment.appeal.mediaCoverageSent) {
+    return new NextResponse("Not found", { status: 404 });
+  }
+  // файлы несогласованного письма из почты — только проверяющему
+  if (attachment.appeal.importStatus === "PENDING" && !attachment.appeal.responsible.some((r) => r.userId === session.user.id)) {
     return new NextResponse("Not found", { status: 404 });
   }
 

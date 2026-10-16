@@ -9,6 +9,10 @@ export default async function AppealPage({ params }: { params: Promise<{ id: str
   if (!appeal) notFound();
   // Пресс-служба видит только обращения, отмеченные «Освещено в СМИ».
   if (session!.user.role === "PRESS" && !appeal.mediaCoverageSent) notFound();
+  // Письмо из почты до согласования видит только проверяющий.
+  if (appeal.importStatus === "PENDING" && !appeal.responsible.some((r) => r.isCurrent && r.userId === session!.user.id)) {
+    notFound();
+  }
 
   return <AppealDetail appeal={appeal} users={users} currentUser={session!.user} blobEnabled={Boolean(process.env.BLOB_READ_WRITE_TOKEN)} />;
 }

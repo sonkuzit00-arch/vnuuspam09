@@ -33,7 +33,7 @@ export async function GET(request: Request) {
   }
 
   const appeals = await prisma.appeal.findMany({
-    where: { stage: "IN_PROGRESS", deadlineRemindedAt: null, controlDate: { lte: horizon } },
+    where: { importStatus: null, stage: "IN_PROGRESS", deadlineRemindedAt: null, controlDate: { lte: horizon } },
     include: { responsible: { where: { isCurrent: true }, select: { userId: true } } },
   });
   for (const a of appeals) {

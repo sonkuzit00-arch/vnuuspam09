@@ -3,14 +3,16 @@ import { simpleParser, type AddressObject } from "mailparser";
 import { put } from "@vercel/blob";
 import { prisma } from "@/lib/prisma";
 import { notifyUsers } from "@/lib/notify";
-import { DEFAULT_RESPONSIBLE_NAME, UNCLASSIFIED_CATEGORY } from "@/lib/constants";
+import { DEFAULT_IMPORT_REVIEWER_EMAIL, UNCLASSIFIED_CATEGORY } from "@/lib/constants";
 import { MAX_ATTACHMENT_BYTES, MAX_DB_ATTACHMENT_BYTES, attachmentPrefix } from "@/lib/attachments";
 
 // Импорт обращений из почтового ящика (Mail.ru, Яндекс и любой другой с IMAP).
-// Каждое непрочитанное письмо из папки IMAP_FOLDER становится обращением
-// с каналом «ГД; электронная почта», вложения — файлами карточки. После
-// импорта письмо помечается прочитанным; повторно одно и то же письмо не
-// импортируется (уникальный Message-ID).
+// Каждое непрочитанное письмо из папки IMAP_FOLDER становится черновиком
+// обращения (importStatus = PENDING) с каналом «ГД; электронная почта»,
+// вложения — файлами карточки. Черновик видит только проверяющий
+// (MAIL_IMPORT_RESPONSIBLE_EMAIL, по умолчанию Кузнецова): он правит карточку
+// и принимает или отклоняет её. После импорта письмо помечается прочитанным;
+// повторно одно и то же письмо не импортируется (уникальный Message-ID).
 
 export const SOURCE_CHANNEL_EMAIL = "ГД; электронная почта";
 const BATCH = 20; // писем за один запуск — чтобы уложиться во время функции
@@ -32,13 +34,13 @@ function splitName(name: string, email: string) {
   return { lastName: parts[0], firstName: parts[1] ?? null, middleName: parts.slice(2).join(" ") || null };
 }
 
-async function defaultResponsibleId() {
-  const byEmail = process.env.MAIL_IMPORT_RESPONSIBLE_EMAIL;
-  const user =
-    (byEmail && (await prisma.user.findFirst({ where: { email: byEmail.toLowerCase(), isActive: true } }))) ||
-    (await prisma.user.findFirst({ where: { name: DEFAULT_RESPONSIBLE_NAME, isActive: true } })) ||
-    (await prisma.user.findFirst({ where: { role: { in: ["KAU", "ADMIN"] }, isActive: true }, orderBy: { role: "desc" } }));
-  if (!user) throw new Error("Нет активного пользователя КАУ/администратора для назначения обращений");
+export const importReviewerEmail = () =>
+  (process.env.MAIL_IMPORT_RESPONSIBLE_EMAIL || DEFAULT_IMPORT_REVIEWER_EMAIL).toLowerCase();
+
+async function reviewerId() {
+  const email = importReviewerEmail();
+  const user = await prisma.user.findFirst({ where: { email, isActive: true } });
+  if (!user) throw new Error(`Проверяющий для писем (${email}) не найден или заблокирован`);
   return user.id;
 }
 
@@ -46,7 +48,7 @@ export async function importAppealsFromMail(): Promise<MailImportResult> {
   if (!mailImportConfigured()) throw new Error("Импорт из почты не настроен (IMAP_HOST, IMAP_USER, IMAP_PASSWORD)");
 
   const result: MailImportResult = { imported: 0, skipped: 0, errors: [] };
-  const responsibleId = await defaultResponsibleId();
+  const responsibleId = await reviewerId();
   const ownAddresses = [process.env.SMTP_FROM, process.env.SMTP_USER]
     .filter(Boolean)
     .map((a) => a!.replace(/.*<|>.*/g, "").trim().toLowerCase());
@@ -86,6 +88,7 @@ export async function importAppealsFromMail(): Promise<MailImportResult> {
           data: {
             sourceChannel: SOURCE_CHANNEL_EMAIL,
             sourceMessageId: messageId,
+            importStatus: "PENDING",
             subject,
             receivedAtDgd: received,
             receivedAtKau: new Date(),
@@ -98,7 +101,7 @@ export async function importAppealsFromMail(): Promise<MailImportResult> {
             events: {
               create: {
                 type: "CREATED",
-                message: `Обращение импортировано из почты (${sender.email || "неизвестный отправитель"}, тема «${subject}»)`,
+                message: `Письмо импортировано из почты (${sender.email || "неизвестный отправитель"}, тема «${subject}») — ждёт согласования`,
               },
             },
           },
@@ -131,7 +134,7 @@ export async function importAppealsFromMail(): Promise<MailImportResult> {
         result.imported++;
 
         await notifyUsers([responsibleId], {
-          subject: "Новое обращение из почты",
+          subject: "Письмо из почты ждёт согласования",
           text: `${subject}\nОт: ${sender.name ? `${sender.name} <${sender.email}>` : sender.email}`,
           link: `/appeals/${appeal.id}`,
         });

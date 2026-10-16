@@ -46,6 +46,7 @@ model Appeal {
   receivedAtKau      DateTime?
   registrationNumber String? // номер входящего в САДД
   sourceMessageId    String?   @unique // Message-ID письма, если обращение импортировано из почты
+  importStatus       String? // PENDING — письмо из почты ждёт согласования проверяющим; null — обычное обращение
   forwardedToOp      Boolean   @default(false)
   forwardedToOpAt    DateTime?
 
@@ -124,9 +125,20 @@ model AppealEvent {
   appealId  String
   author    User?    @relation(fields: [authorId], references: [id])
   authorId  String?
-  type      String // STAGE_CHANGE | NOTE | DZ_SENT | REPLY_SENT | APPLICANT_INFORMED | GRATITUDE | MEDIA | CREATED
+  type      String // STAGE_CHANGE | NOTE | DZ_SENT | REPLY_SENT | APPLICANT_INFORMED | GRATITUDE | MEDIA | CREATED | STEP
   message   String
   createdAt DateTime @default(now())
+
+  // --- Этап процесса, отмеченный за участника (type = STEP) ---
+  // Нужен, когда кто-то работает вне приложения (напр. согласовал по почте):
+  // любой сотрудник фиксирует, что произошло, кем и каким способом.
+  stepType   String? // Поступило | Передано | Согласовано | …
+  actorName  String? // кто (сотрудник или внешний участник)
+  targetName String? // кому / от кого
+  channel    String? // в приложении | по почте | по телефону | лично | через САДД
+  occurredAt DateTime? // когда это произошло на самом деле
+  stepNote   String? // комментарий к этапу
+  editedAt   DateTime?
 
   @@index([appealId])
   @@map("appeal_events")
@@ -137,19 +149,20 @@ model AppealEvent {
 // зарегистрировать в САДД»). Не меняет текущего ответственного за
 // обращение — это отдельная, более гранулярная задача внутри него.
 model AppealTask {
-  id           String    @id @default(cuid())
-  appeal       Appeal    @relation(fields: [appealId], references: [id], onDelete: Cascade)
-  appealId     String
-  assignedBy   User      @relation("TasksAssigned", fields: [assignedById], references: [id])
-  assignedById String
-  assignee     User      @relation("TasksReceived", fields: [assigneeId], references: [id])
-  assigneeId   String
-  description  String
-  status       String    @default("PENDING") // PENDING | IN_PROGRESS | DONE
-  dueDate      DateTime? // срок исполнения поручения
-  remindedAt   DateTime? // когда отправлено напоминание о сроке
-  createdAt    DateTime  @default(now())
-  completedAt  DateTime?
+  id             String    @id @default(cuid())
+  appeal         Appeal    @relation(fields: [appealId], references: [id], onDelete: Cascade)
+  appealId       String
+  assignedBy     User      @relation("TasksAssigned", fields: [assignedById], references: [id])
+  assignedById   String
+  assignee       User      @relation("TasksReceived", fields: [assigneeId], references: [id])
+  assigneeId     String
+  description    String
+  status         String    @default("PENDING") // PENDING | IN_PROGRESS | DONE
+  dueDate        DateTime? // срок исполнения поручения
+  remindedAt     DateTime? // когда отправлено напоминание о сроке
+  createdAt      DateTime  @default(now())
+  completedAt    DateTime?
+  completionNote String? // напр. «согласовано по почте; отметил(а) Кузнецова»
 
   @@index([appealId])
   @@index([assigneeId])

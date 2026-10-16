@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 
 export async function getMyAppeals(userId: string) {
   return prisma.appeal.findMany({
-    where: { responsible: { some: { userId, isCurrent: true } } },
+    where: { importStatus: null, responsible: { some: { userId, isCurrent: true } } },
     orderBy: { updatedAt: "desc" },
     include: { responsible: { include: { user: true }, where: { isCurrent: true } } },
   });
@@ -11,7 +11,7 @@ export async function getMyAppeals(userId: string) {
 /** Поручения, назначенные конкретному человеку (не обязательно он — ответственный за обращение). */
 export async function getMyTasks(userId: string) {
   return prisma.appealTask.findMany({
-    where: { assigneeId: userId },
+    where: { assigneeId: userId, appeal: { importStatus: null } },
     orderBy: { createdAt: "desc" },
     include: { appeal: true, assignedBy: true },
   });
@@ -25,7 +25,7 @@ export async function getMyTasks(userId: string) {
  */
 export async function getAppealsNeedingRouting() {
   return prisma.appeal.findMany({
-    where: { resolutionPath: null, stage: "IN_PROGRESS" },
+    where: { importStatus: null, resolutionPath: null, stage: "IN_PROGRESS" },
     orderBy: { createdAt: "asc" },
     include: { responsible: { include: { user: true }, where: { isCurrent: true } } },
   });
@@ -33,8 +33,18 @@ export async function getAppealsNeedingRouting() {
 
 export async function getAllAppeals() {
   return prisma.appeal.findMany({
+    where: { importStatus: null },
     orderBy: { updatedAt: "desc" },
     include: { responsible: { include: { user: true }, where: { isCurrent: true } } },
+  });
+}
+
+/** Письма из почты, ждущие согласования этим пользователем. */
+export async function getPendingImports(userId: string) {
+  return prisma.appeal.findMany({
+    where: { importStatus: "PENDING", responsible: { some: { userId, isCurrent: true } } },
+    orderBy: { createdAt: "asc" },
+    include: { responsible: { include: { user: true }, where: { isCurrent: true } }, _count: { select: { attachments: true } } },
   });
 }
 
@@ -57,7 +67,7 @@ export async function getAppeal(id: string) {
 /** Обращения с отметкой «Освещено в СМИ» — единственное, что видит пресс-служба. */
 export async function getMediaCoverageAppeals() {
   return prisma.appeal.findMany({
-    where: { mediaCoverageSent: true },
+    where: { importStatus: null, mediaCoverageSent: true },
     orderBy: { mediaCoverageAt: "desc" },
     include: { responsible: { include: { user: true }, where: { isCurrent: true } } },
   });
@@ -66,6 +76,7 @@ export async function getMediaCoverageAppeals() {
 /** Полная лента поручений по всей команде — «кому как делегируются задачи». */
 export async function getAllTasks() {
   return prisma.appealTask.findMany({
+    where: { appeal: { importStatus: null } },
     orderBy: { createdAt: "desc" },
     include: { appeal: true, assignedBy: true, assignee: true },
     take: 100,

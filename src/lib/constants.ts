@@ -161,6 +161,26 @@ export const EDIT_BLOCKED_ROLES = ["VIEWER", "APPROVER", "PRESS"] as const;
 // т.е. выполняют роль КАУ по факту (Бабаханова + оба администратора).
 export const ROUTING_ROLES = ["KAU", "ADMIN"] as const;
 
+// Этапы процесса, которые можно отметить за любого участника (в т.ч. за тех,
+// кто не пользуется приложением и, например, согласует по почте).
+export const STEP_TYPES = [
+  "Поступило",
+  "Передано",
+  "Направлено на согласование",
+  "Согласовано",
+  "Согласовано с правками",
+  "Не согласовано",
+  "Направлен запрос / ответ",
+  "Получен ответ",
+  "Другое",
+] as const;
+
+export const STEP_CHANNELS = ["в приложении", "по почте", "по телефону", "лично", "через САДД", "в мессенджере"] as const;
+
+// Кто согласовывает письма, импортированные из почты (можно переопределить
+// переменной MAIL_IMPORT_RESPONSIBLE_EMAIL).
+export const DEFAULT_IMPORT_REVIEWER_EMAIL = "sofia@dgd.local";
+
 export const TASK_STATUSES = ["PENDING", "IN_PROGRESS", "DONE"] as const;
 
 export const TASK_STATUS_LABELS: Record<(typeof TASK_STATUSES)[number], string> = {

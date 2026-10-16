@@ -6,8 +6,8 @@ import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { createAppealSchema } from "@/lib/schemas";
-import { STAGE_LABELS, TASK_STATUS_LABELS, READ_ONLY_ROLES, EDIT_BLOCKED_ROLES, ROUTING_ROLES } from "@/lib/constants";
-import { importAppealsFromMail, mailImportConfigured } from "@/lib/mail-import";
+import { STAGE_LABELS, TASK_STATUS_LABELS, READ_ONLY_ROLES, EDIT_BLOCKED_ROLES } from "@/lib/constants";
+import { importAppealsFromMail, mailImportConfigured, importReviewerEmail } from "@/lib/mail-import";
 import { notifyUsers, appealsMailbox, sendEmail, appUrl } from "@/lib/notify";
 import { attachmentPrefix, requireAttachmentEditor } from "@/lib/attachments";
 import { del, head } from "@vercel/blob";
@@ -308,20 +308,26 @@ export async function createAppealTask(appealId: string, assigneeId: string, des
  * (APPROVER, напр. Чижов) — только по своим поручениям, это и есть его
  * единственное действие в системе (согласование).
  */
-export async function updateTaskStatus(taskId: string, status: string) {
+export async function updateTaskStatus(taskId: string, status: string, channel?: string) {
   const user = await requireUser();
   if ((READ_ONLY_ROLES as readonly string[]).includes(user.role)) {
     throw new Error("Роль «Наблюдатель» доступна только для просмотра");
   }
 
-  const existing = await prisma.appealTask.findUniqueOrThrow({ where: { id: taskId } });
+  const existing = await prisma.appealTask.findUniqueOrThrow({ where: { id: taskId }, include: { assignee: true } });
   if (user.role === "APPROVER" && existing.assigneeId !== user.id) {
     throw new Error("Можно согласовывать только поручения, адресованные вам");
   }
 
+  // Отметка за исполнителя, который не пользуется приложением (напр. Чижов
+  // согласовал по почте): фиксируем, кто отметил и каким способом.
+  const onBehalf = existing.assigneeId !== user.id;
+  const completionNote =
+    status === "DONE" && onBehalf ? `${channel || "вне приложения"}; отметил(а) ${user.name}` : null;
+
   const task = await prisma.appealTask.update({
     where: { id: taskId },
-    data: { status, completedAt: status === "DONE" ? new Date() : null },
+    data: { status, completedAt: status === "DONE" ? new Date() : null, completionNote },
   });
 
   if (status === "DONE" && existing.status !== "DONE" && task.assignedById !== user.id) {
@@ -339,7 +345,9 @@ export async function updateTaskStatus(taskId: string, status: string) {
       appealId: task.appealId,
       authorId: user.id,
       type: "STAGE_CHANGE",
-      message: `Поручение: статус «${TASK_STATUS_LABELS[status as keyof typeof TASK_STATUS_LABELS] ?? status}»`,
+      message:
+        `Поручение «${task.description}»: статус «${TASK_STATUS_LABELS[status as keyof typeof TASK_STATUS_LABELS] ?? status}»` +
+        (onBehalf ? ` — за исполнителя ${existing.assignee.name}${channel ? ` (${channel})` : ""}` : ""),
     },
   });
 
@@ -442,7 +450,7 @@ export async function deleteAttachment(attachmentId: string) {
 /** Кнопка «Забрать письма» в кабинете КАУ/админа — импорт новых писем в обращения. */
 export async function importMailNow(): Promise<{ error?: string; imported?: number; skipped?: number; failed?: number }> {
   const user = await requireUser();
-  if (!(ROUTING_ROLES as readonly string[]).includes(user.role)) return { error: "Доступно КАУ и администраторам" };
+  if (user.email?.toLowerCase() !== importReviewerEmail()) return { error: "Забирать письма может только проверяющий" };
   if (!mailImportConfigured()) return { error: "Импорт из почты не настроен" };
   try {
     const r = await importAppealsFromMail();
@@ -454,4 +462,174 @@ export async function importMailNow(): Promise<{ error?: string; imported?: numb
     console.error("Импорт из почты:", e);
     return { error: "Не удалось подключиться к почте — проверьте IMAP-настройки" };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Письма из почты: согласование черновика проверяющим
+// ---------------------------------------------------------------------------
+
+async function requirePendingReviewer(appealId: string) {
+  const user = await requireUser();
+  const appeal = await prisma.appeal.findUniqueOrThrow({
+    where: { id: appealId },
+    include: { responsible: { where: { isCurrent: true } } },
+  });
+  if (appeal.importStatus !== "PENDING") throw new Error("Обращение уже согласовано");
+  if (!appeal.responsible.some((r) => r.userId === user.id)) throw new Error("Согласовать может только проверяющий");
+  return { user, appeal };
+}
+
+/** Принять письмо как обращение — оно появляется у КАУ в «Требуют маршрутизации». */
+export async function approveImportedAppeal(appealId: string) {
+  const { user } = await requirePendingReviewer(appealId);
+  await prisma.appeal.update({
+    where: { id: appealId },
+    data: {
+      importStatus: null,
+      receivedAtKau: new Date(),
+      events: { create: { type: "STAGE_CHANGE", message: "Письмо из почты согласовано и принято как обращение", authorId: user.id } },
+    },
+  });
+  revalidatePath(`/appeals/${appealId}`);
+  revalidatePath("/");
+  revalidatePath("/summary");
+}
+
+/** Отклонить письмо (спам, не обращение) — черновик удаляется вместе с файлами. */
+export async function rejectImportedAppeal(appealId: string) {
+  await requirePendingReviewer(appealId);
+  const files = await prisma.appealAttachment.findMany({
+    where: { appealId, blobPathname: { not: null } },
+    select: { blobPathname: true },
+  });
+  if (files.length && process.env.BLOB_READ_WRITE_TOKEN) await del(files.map((f) => f.blobPathname!));
+  await prisma.appeal.delete({ where: { id: appealId } });
+  revalidatePath("/");
+  redirect("/");
+}
+
+// ---------------------------------------------------------------------------
+// Редактирование карточки
+// ---------------------------------------------------------------------------
+
+const DETAIL_LABELS: Record<string, string> = {
+  sourceChannel: "канал",
+  lastName: "фамилия",
+  firstName: "имя",
+  middleName: "отчество",
+  phone: "телефон",
+  email: "email",
+  socialHandle: "соцсети",
+  address: "адрес",
+  district: "район",
+  goal: "суть",
+  description: "описание",
+  category: "категория",
+  targetAudience: "ЦА",
+};
+
+export type AppealDetailsInput = Partial<Record<keyof typeof DETAIL_LABELS, string>>;
+
+export async function updateAppealDetails(appealId: string, input: AppealDetailsInput): Promise<{ error?: string }> {
+  const user = await requireEditor();
+  const current = await prisma.appeal.findUniqueOrThrow({ where: { id: appealId } });
+
+  const data: Record<string, string | null> = {};
+  for (const key of Object.keys(DETAIL_LABELS)) {
+    const raw = input[key as keyof AppealDetailsInput];
+    if (raw === undefined) continue;
+    const value = raw.trim();
+    if (["lastName", "goal", "category", "sourceChannel"].includes(key) && !value) {
+      return { error: `Поле «${DETAIL_LABELS[key]}» не может быть пустым` };
+    }
+    if ((current as Record<string, unknown>)[key] !== (value || null)) data[key] = value || null;
+  }
+  if (!Object.keys(data).length) return {};
+
+  await prisma.appeal.update({
+    where: { id: appealId },
+    data: {
+      ...data,
+      events: {
+        create: {
+          type: "NOTE",
+          authorId: user.id,
+          message: `Карточка отредактирована: ${Object.keys(data).map((k) => DETAIL_LABELS[k]).join(", ")}`,
+        },
+      },
+    },
+  });
+  revalidatePath(`/appeals/${appealId}`);
+  revalidatePath("/");
+  return {};
+}
+
+// ---------------------------------------------------------------------------
+// Этапы процесса, отмеченные за участников (в т.ч. работающих вне приложения)
+// ---------------------------------------------------------------------------
+
+export type ProcessStepInput = {
+  stepType: string;
+  actorName: string;
+  targetName?: string;
+  channel?: string;
+  occurredAt?: string;
+  comment?: string;
+};
+
+function stepMessage(s: ProcessStepInput) {
+  const target = s.targetName?.trim();
+  const prep = s.stepType === "Поступило" || s.stepType === "Получен ответ" ? "от" : "→";
+  return [
+    `${s.stepType}: ${s.actorName.trim()}`,
+    target ? ` ${prep} ${target}` : "",
+    s.channel ? ` (${s.channel})` : "",
+    s.comment?.trim() ? ` — ${s.comment.trim()}` : "",
+  ].join("");
+}
+
+function stepData(s: ProcessStepInput) {
+  return {
+    stepType: s.stepType,
+    actorName: s.actorName.trim(),
+    targetName: s.targetName?.trim() || null,
+    channel: s.channel || null,
+    occurredAt: s.occurredAt ? new Date(s.occurredAt) : new Date(),
+    stepNote: s.comment?.trim() || null,
+    message: stepMessage(s),
+  };
+}
+
+export async function addProcessStep(appealId: string, step: ProcessStepInput): Promise<{ error?: string }> {
+  const user = await requireEditor();
+  if (!step.stepType || !step.actorName.trim()) return { error: "Укажите этап и участника" };
+  await prisma.appealEvent.create({ data: { appealId, authorId: user.id, type: "STEP", ...stepData(step) } });
+  revalidatePath(`/appeals/${appealId}`);
+  return {};
+}
+
+/** Исправить отмеченный этап (напр. уточнить, что и когда согласовал участник). */
+export async function updateProcessStep(eventId: string, step: ProcessStepInput): Promise<{ error?: string }> {
+  const user = await requireEditor();
+  if (!step.stepType || !step.actorName.trim()) return { error: "Укажите этап и участника" };
+  const ev = await prisma.appealEvent.findUniqueOrThrow({ where: { id: eventId } });
+  if (ev.type !== "STEP") return { error: "Редактировать можно только этапы процесса" };
+  await prisma.appealEvent.update({ where: { id: eventId }, data: { ...stepData(step), editedAt: new Date() } });
+  await prisma.appealEvent.create({
+    data: { appealId: ev.appealId, authorId: user.id, type: "NOTE", message: `Исправлен этап: «${ev.message}» → «${stepMessage(step)}»` },
+  });
+  revalidatePath(`/appeals/${ev.appealId}`);
+  return {};
+}
+
+export async function deleteProcessStep(eventId: string): Promise<{ error?: string }> {
+  const user = await requireEditor();
+  const ev = await prisma.appealEvent.findUniqueOrThrow({ where: { id: eventId } });
+  if (ev.type !== "STEP") return { error: "Удалять можно только этапы процесса" };
+  await prisma.appealEvent.delete({ where: { id: eventId } });
+  await prisma.appealEvent.create({
+    data: { appealId: ev.appealId, authorId: user.id, type: "NOTE", message: `Удалён этап: «${ev.message}»` },
+  });
+  revalidatePath(`/appeals/${ev.appealId}`);
+  return {};
 }

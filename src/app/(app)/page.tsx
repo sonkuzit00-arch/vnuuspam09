@@ -1,12 +1,13 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { getMyAppeals, getMyTasks, getAppealsNeedingRouting, getMediaCoverageAppeals } from "@/lib/queries";
+import { getMyAppeals, getMyTasks, getAppealsNeedingRouting, getMediaCoverageAppeals, getPendingImports } from "@/lib/queries";
 import { StatTile } from "@/components/stat-tile";
 import { AppealListItem } from "@/components/appeal-list-item";
 import { TaskListItem } from "@/components/task-list-item";
 import { STAGE_LABELS, STAGES } from "@/lib/constants";
 import { isOverdue } from "@/lib/sla";
-import { mailImportConfigured } from "@/lib/mail-import";
+import { mailImportConfigured, importReviewerEmail } from "@/lib/mail-import";
+import { MailCheck } from "lucide-react";
 import { ImportMailButton } from "@/components/import-mail-button";
 import { Inbox, AlertTriangle, CheckCircle2, Clock3, Route, Megaphone } from "lucide-react";
 
@@ -16,7 +17,12 @@ export default async function CabinetPage() {
   if (user.role === "VIEWER") redirect("/summary");
   if (user.role === "PRESS") return <PressCabinet />;
 
-  const [appeals, myTasks] = await Promise.all([getMyAppeals(user.id), getMyTasks(user.id)]);
+  const [appeals, myTasks, pendingImports] = await Promise.all([
+    getMyAppeals(user.id),
+    getMyTasks(user.id),
+    getPendingImports(user.id),
+  ]);
+  const isImportReviewer = user.email?.toLowerCase() === importReviewerEmail();
   const needsRouting =
     user.role === "KAU" || user.role === "ADMIN" ? await getAppealsNeedingRouting() : [];
 
@@ -41,7 +47,7 @@ export default async function CabinetPage() {
             Всё, что назначено вам — с любого канала: почта, соцсети, приёмные, поездки.
           </p>
         </div>
-        {(user.role === "KAU" || user.role === "ADMIN") && mailImportConfigured() && <ImportMailButton />}
+        {isImportReviewer && mailImportConfigured() && <ImportMailButton />}
       </div>
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -50,6 +56,26 @@ export default async function CabinetPage() {
         <StatTile label="Просрочено" value={overdueCount} icon={<AlertTriangle className="h-4 w-4" />} accent="red" />
         <StatTile label="Решено в этом месяце" value={resolvedThisMonth} icon={<CheckCircle2 className="h-4 w-4" />} accent="emerald" />
       </div>
+
+      {pendingImports.length > 0 && (
+        <div>
+          <div className="mb-3 flex items-center gap-2">
+            <MailCheck className="h-4 w-4 text-amber-600" />
+            <h2 className="text-sm font-semibold text-amber-700 dark:text-amber-300">Письма из почты на согласование</h2>
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
+              {pendingImports.length}
+            </span>
+          </div>
+          <p className="mb-3 text-xs text-[var(--muted)]">
+            Видите только вы. Откройте письмо, проверьте файлы и карточку, затем примите или отклоните.
+          </p>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+            {pendingImports.map((appeal) => (
+              <AppealListItem key={appeal.id} appeal={appeal} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {needsRouting.length > 0 && (
         <div>
@@ -89,7 +115,7 @@ export default async function CabinetPage() {
         </div>
       )}
 
-      {appeals.length === 0 && openTasks.length === 0 && needsRouting.length === 0 && (
+      {appeals.length === 0 && openTasks.length === 0 && needsRouting.length === 0 && pendingImports.length === 0 && (
         <div className="rounded-2xl border border-dashed border-[var(--border)] p-10 text-center text-sm text-[var(--muted)]">
           Пока нет обращений, назначенных вам.
         </div>

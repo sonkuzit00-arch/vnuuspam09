@@ -29,6 +29,7 @@ export const CHANNEL_FILTER_OPTIONS = Object.entries(SOURCE_CHANNEL_GROUPS).flat
 
 async function loadAppeals() {
   return prisma.appeal.findMany({
+    where: { importStatus: null },
     orderBy: { createdAt: "asc" },
     include: {
       responsible: { where: { isCurrent: true }, include: { user: { select: { id: true, name: true } } } },

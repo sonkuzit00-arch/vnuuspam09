@@ -28,9 +28,12 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { StageBadge } from "@/components/stage-badge";
 import { OutgoingNumbers } from "@/components/outgoing-numbers";
 import { AppealAttachments } from "@/components/appeal-attachments";
+import { AppealDetailsForm } from "@/components/appeal-details-form";
+import { ProcessSteps } from "@/components/process-steps";
 import {
   STAGES,
   STAGE_LABELS,
+  STEP_CHANNELS,
   RESOLUTION_PATHS,
   CATEGORIES,
   UNCLASSIFIED_CATEGORY,
@@ -48,6 +51,8 @@ import {
   reassignResponsible,
   createAppealTask,
   updateTaskStatus,
+  approveImportedAppeal,
+  rejectImportedAppeal,
 } from "@/lib/actions";
 
 type Appeal = NonNullable<Awaited<ReturnType<typeof getAppeal>>>;
@@ -90,6 +95,8 @@ export function AppealDetail({
   const [taskAssignee, setTaskAssignee] = useState("");
   const [taskDescription, setTaskDescription] = useState("");
   const [taskDueDate, setTaskDueDate] = useState("");
+  const [taskChannel, setTaskChannel] = useState<Record<string, string>>({});
+  const [editingDetails, setEditingDetails] = useState(false);
   const overdue = isOverdue(appeal);
   // Наблюдатель и согласующий не редактируют обращение — согласующему при
   // этом отдельно, ниже, разрешено отмечать статус СВОИХ поручений.
@@ -98,6 +105,10 @@ export function AppealDetail({
   const canRoute = currentUser.role === "KAU" || currentUser.role === "ADMIN";
 
   const responsible = appeal.responsible.find((r) => r.isCurrent)?.user ?? appeal.responsible[0]?.user;
+  // Письмо из почты, которое ещё не согласовал проверяющий: до согласования
+  // карточку можно править, но поручения/передача/статусы недоступны.
+  const pendingImport = appeal.importStatus === "PENDING";
+  const steps = appeal.events.filter((e) => e.type === "STEP");
   const responsibleHistory = appeal.responsible.filter((r) => !r.isCurrent);
 
   function handleStage(stage: string) {
@@ -142,9 +153,9 @@ export function AppealDetail({
     });
   }
 
-  function setTaskStatus(taskId: string, status: string) {
+  function setTaskStatus(taskId: string, status: string, channel?: string) {
     startTransition(async () => {
-      await updateTaskStatus(taskId, status);
+      await updateTaskStatus(taskId, status, channel);
       toast.success(`Поручение: ${TASK_STATUS_LABELS[status as keyof typeof TASK_STATUS_LABELS]}`);
     });
   }
@@ -165,7 +176,7 @@ export function AppealDetail({
           </p>
         </div>
 
-        {!readOnly && (
+        {!readOnly && !pendingImport && (
           <div className="flex flex-wrap gap-2">
             {STAGES.map((s) => (
               <Button
@@ -182,17 +193,87 @@ export function AppealDetail({
         )}
       </div>
 
+      {pendingImport && (
+        <Card className="border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/10">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-5">
+            <div>
+              <p className="text-sm font-semibold">Письмо из почты ждёт вашего согласования</p>
+              <p className="text-xs text-[var(--muted)]">
+                Его видите только вы. Проверьте письмо и файлы, при необходимости отредактируйте карточку, затем примите
+                обращение — оно появится у КАУ в «Требуют маршрутизации».
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                disabled={pending}
+                onClick={() =>
+                  confirm("Отклонить письмо? Черновик и его файлы будут удалены.") &&
+                  startTransition(async () => {
+                    await rejectImportedAppeal(appeal.id);
+                  })
+                }
+              >
+                Отклонить
+              </Button>
+              <Button
+                disabled={pending}
+                onClick={() =>
+                  startTransition(async () => {
+                    await approveImportedAppeal(appeal.id);
+                    toast.success("Обращение принято");
+                  })
+                }
+              >
+                Принять обращение
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="flex flex-col gap-6 lg:col-span-2">
           <Card>
-            <CardHeader>
-              <CardTitle>Суть обращения</CardTitle>
-              <CardDescription>{appeal.category}{appeal.targetAudience ? ` · ${appeal.targetAudience}` : ""}</CardDescription>
+            <CardHeader className="flex-row flex-wrap items-start justify-between gap-2">
+              <div>
+                <CardTitle>Суть обращения</CardTitle>
+                <CardDescription>{appeal.category}{appeal.targetAudience ? ` · ${appeal.targetAudience}` : ""}</CardDescription>
+              </div>
+              {!readOnly && !editingDetails && (
+                <Button variant="outline" size="sm" onClick={() => setEditingDetails(true)}>
+                  Редактировать карточку
+                </Button>
+              )}
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
-              <p className="text-sm font-medium">{appeal.goal}</p>
-              {appeal.description && (
-                <p className="whitespace-pre-line text-sm text-[var(--foreground)]/80">{appeal.description}</p>
+              {editingDetails ? (
+                <AppealDetailsForm
+                  appealId={appeal.id}
+                  onDone={() => setEditingDetails(false)}
+                  initial={{
+                    sourceChannel: appeal.sourceChannel,
+                    lastName: appeal.lastName,
+                    firstName: appeal.firstName,
+                    middleName: appeal.middleName,
+                    phone: appeal.phone,
+                    email: appeal.email,
+                    socialHandle: appeal.socialHandle,
+                    address: appeal.address,
+                    district: appeal.district,
+                    goal: appeal.goal,
+                    description: appeal.description,
+                    category: appeal.category,
+                    targetAudience: appeal.targetAudience,
+                  }}
+                />
+              ) : (
+                <>
+                  <p className="text-sm font-medium">{appeal.goal}</p>
+                  {appeal.description && (
+                    <p className="whitespace-pre-line text-sm text-[var(--foreground)]/80">{appeal.description}</p>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>
@@ -292,6 +373,7 @@ export function AppealDetail({
             </CardContent>
           </Card>
 
+          {!pendingImport && (
           <Card>
             <CardHeader>
               <CardTitle>Поручения</CardTitle>
@@ -351,10 +433,35 @@ export function AppealDetail({
                         </span>
                       )}
                     </p>
+                    {task.completionNote && (
+                      <p className="text-xs text-[var(--muted)]">Отмечено за исполнителя: {task.completionNote}</p>
+                    )}
+                    {!readOnly && task.status === "DONE" && (
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={() => setTaskStatus(task.id, "IN_PROGRESS")}
+                        className="self-start rounded-md px-2.5 py-1 text-xs text-[var(--muted)] hover:bg-[var(--surface-2)]"
+                      >
+                        Вернуть в работу
+                      </button>
+                    )}
                     {canActOnTasks &&
                       task.status !== "DONE" &&
                       (currentUser.role !== "APPROVER" || task.assigneeId === currentUser.id) && (
-                        <div className="mt-1 flex gap-2">
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          {task.assigneeId !== currentUser.id && (
+                            <select
+                              aria-label="Как исполнитель отметил"
+                              value={taskChannel[task.id] ?? "по почте"}
+                              onChange={(e) => setTaskChannel((c) => ({ ...c, [task.id]: e.target.value }))}
+                              className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs"
+                            >
+                              {STEP_CHANNELS.filter((c) => c !== "в приложении").map((c) => (
+                                <option key={c} value={c}>за исполнителя: {c}</option>
+                              ))}
+                            </select>
+                          )}
                           {task.status === "PENDING" && currentUser.role !== "APPROVER" && (
                             <button
                               type="button"
@@ -368,7 +475,13 @@ export function AppealDetail({
                           <button
                             type="button"
                             disabled={pending}
-                            onClick={() => setTaskStatus(task.id, "DONE")}
+                            onClick={() =>
+                              setTaskStatus(
+                                task.id,
+                                "DONE",
+                                task.assigneeId !== currentUser.id ? taskChannel[task.id] ?? "по почте" : undefined
+                              )
+                            }
                             className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500"
                           >
                             {currentUser.role === "APPROVER" ? "Согласовать" : "Выполнено"}
@@ -380,6 +493,17 @@ export function AppealDetail({
               </div>
             </CardContent>
           </Card>
+
+          )}
+
+          {!pendingImport && (
+            <ProcessSteps
+              appealId={appeal.id}
+              steps={steps}
+              people={users.map((u) => u.name)}
+              canEdit={!readOnly}
+            />
+          )}
 
           <AppealAttachments
             appealId={appeal.id}
@@ -469,7 +593,7 @@ export function AppealDetail({
             </CardContent>
           </Card>
 
-          {!readOnly && (
+          {!readOnly && !pendingImport && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-1.5"><UserCog className="h-3.5 w-3.5" /> Передать обращение</CardTitle>
