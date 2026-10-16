@@ -22,6 +22,7 @@ export function proxy(request: NextRequest) {
   });
 }
 
+// Вебхук Telegram и cron Vercel защищены собственными секретами.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/telegram/webhook|api/cron/).*)"],
 };

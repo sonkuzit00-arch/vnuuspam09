@@ -17,12 +17,21 @@ model User {
   email        String   @unique
   passwordHash String
   role         String   @default("GD") // ADMIN | KAU | GD | GR | OP | BTL_BF | APPROVER | PRESS | VIEWER
+  isActive     Boolean  @default(true) // заблокированный пользователь не может войти
   createdAt    DateTime @default(now())
+
+  // --- Уведомления (каждый настраивает сам в профиле) ---
+  notifyEmail      String? // адрес для уведомлений; пусто — на email учётной записи
+  notifyByEmail    Boolean @default(false)
+  notifyByTelegram Boolean @default(false)
+  telegramChatId   String?
+  telegramLinkCode String? @unique // одноразовый код для привязки через /start
 
   appeals       AppealResponsible[]
   events        AppealEvent[]
   tasksAssigned AppealTask[]        @relation("TasksAssigned")
   tasksReceived AppealTask[]        @relation("TasksReceived")
+  attachments   AppealAttachment[]
 
   @@map("users")
 }
@@ -70,6 +79,7 @@ model Appeal {
   replyNumberToCitizen String? // номер ответа гражданину
   result               String?
   resolvedAt           DateTime?
+  deadlineRemindedAt   DateTime? // когда отправлено напоминание о контрольном сроке
 
   // --- Ответственность по регламенту ---
   gratitudeSent     Boolean   @default(false)
@@ -85,6 +95,7 @@ model Appeal {
   events          AppealEvent[]
   tasks           AppealTask[]
   outgoingNumbers AppealOutgoingNumber[]
+  attachments     AppealAttachment[]
 
   @@map("appeals")
 }
@@ -134,6 +145,8 @@ model AppealTask {
   assigneeId   String
   description  String
   status       String    @default("PENDING") // PENDING | IN_PROGRESS | DONE
+  dueDate      DateTime? // срок исполнения поручения
+  remindedAt   DateTime? // когда отправлено напоминание о сроке
   createdAt    DateTime  @default(now())
   completedAt  DateTime?
 
@@ -160,4 +173,24 @@ model AppealOutgoingNumber {
 
   @@index([appealId])
   @@map("appeal_outgoing_numbers")
+}
+
+// Файл, приложенный к обращению (скан письма, ответ органа власти и т.п.).
+// На Vercel содержимое лежит в приватном Vercel Blob (blobPathname), без
+// BLOB_READ_WRITE_TOKEN — прямо в базе (data), для внутреннего сервера.
+model AppealAttachment {
+  id           String   @id @default(cuid())
+  appeal       Appeal   @relation(fields: [appealId], references: [id], onDelete: Cascade)
+  appealId     String
+  uploadedBy   User?    @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  uploadedById String?
+  fileName     String
+  contentType  String
+  size         Int
+  blobPathname String?
+  data         Bytes?
+  createdAt    DateTime @default(now())
+
+  @@index([appealId])
+  @@map("appeal_attachments")
 }

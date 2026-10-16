@@ -46,6 +46,10 @@ export async function getAppeal(id: string) {
       events: { orderBy: { createdAt: "desc" }, include: { author: true } },
       tasks: { orderBy: { createdAt: "asc" }, include: { assignedBy: true, assignee: true } },
       outgoingNumbers: { orderBy: { createdAt: "asc" } },
+      attachments: {
+        orderBy: { createdAt: "asc" },
+        select: { id: true, fileName: true, contentType: true, size: true, createdAt: true, uploadedBy: { select: { name: true } } },
+      },
     },
   });
 }
@@ -70,4 +74,9 @@ export async function getAllTasks() {
 
 export async function getUsers() {
   return prisma.user.findMany({ orderBy: { name: "asc" } });
+}
+
+/** Для выбора ответственного/исполнителя — без заблокированных. */
+export async function getActiveUsers() {
+  return prisma.user.findMany({ where: { isActive: true }, orderBy: { name: "asc" } });
 }

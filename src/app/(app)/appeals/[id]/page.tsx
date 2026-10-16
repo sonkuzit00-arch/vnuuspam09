@@ -1,14 +1,14 @@
 import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { getAppeal, getUsers } from "@/lib/queries";
+import { getAppeal, getActiveUsers } from "@/lib/queries";
 import { AppealDetail } from "@/components/appeal-detail";
 
 export default async function AppealPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [appeal, users, session] = await Promise.all([getAppeal(id), getUsers(), auth()]);
+  const [appeal, users, session] = await Promise.all([getAppeal(id), getActiveUsers(), auth()]);
   if (!appeal) notFound();
   // Пресс-служба видит только обращения, отмеченные «Освещено в СМИ».
   if (session!.user.role === "PRESS" && !appeal.mediaCoverageSent) notFound();
 
-  return <AppealDetail appeal={appeal} users={users} currentUser={session!.user} />;
+  return <AppealDetail appeal={appeal} users={users} currentUser={session!.user} blobEnabled={Boolean(process.env.BLOB_READ_WRITE_TOKEN)} />;
 }

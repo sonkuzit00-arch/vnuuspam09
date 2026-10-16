@@ -2,10 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { createAppealSchema } from "@/lib/schemas";
 import { STAGE_LABELS, TASK_STATUS_LABELS, READ_ONLY_ROLES, EDIT_BLOCKED_ROLES } from "@/lib/constants";
+import { notifyUsers } from "@/lib/notify";
+import { attachmentPrefix, requireAttachmentEditor } from "@/lib/attachments";
+import { del, head } from "@vercel/blob";
+
+function appealTitle(a: { lastName: string; firstName?: string | null; subject?: string | null }) {
+  return `${a.lastName}${a.firstName ? ` ${a.firstName}` : ""}${a.subject ? ` — ${a.subject}` : ""}`;
+}
 
 async function requireUser() {
   const session = await auth();
@@ -72,6 +80,16 @@ export async function createAppeal(formData: FormData) {
       },
     },
   });
+
+  if (data.responsibleId !== user.id) {
+    after(() =>
+      notifyUsers([data.responsibleId], {
+        subject: "Вам назначено новое обращение",
+        text: `${appealTitle(appeal)}\nКанал: ${appeal.sourceChannel}\nЗарегистрировал(а): ${user.name}`,
+        link: `/appeals/${appeal.id}`,
+      })
+    );
+  }
 
   revalidatePath("/");
   revalidatePath("/summary");
@@ -148,6 +166,7 @@ export async function updateAppealFields(
   if (fields.replyNumberToCitizen !== undefined) data.replyNumberToCitizen = fields.replyNumberToCitizen;
   if (fields.controlDate !== undefined) {
     data.controlDate = fields.controlDate ? new Date(fields.controlDate) : null;
+    data.deadlineRemindedAt = null; // новый срок — новое напоминание
   }
   if (fields.receivedAtDgd !== undefined) {
     data.receivedAtDgd = fields.receivedAtDgd ? new Date(fields.receivedAtDgd) : null;
@@ -182,6 +201,7 @@ export async function reassignResponsible(appealId: string, newResponsibleId: st
   const user = await requireEditor();
 
   const newResponsible = await prisma.user.findUniqueOrThrow({ where: { id: newResponsibleId } });
+  const appeal = await prisma.appeal.findUniqueOrThrow({ where: { id: appealId } });
 
   await prisma.$transaction([
     prisma.appealResponsible.updateMany({
@@ -201,20 +221,33 @@ export async function reassignResponsible(appealId: string, newResponsibleId: st
     }),
   ]);
 
+  if (newResponsibleId !== user.id) {
+    after(() =>
+      notifyUsers([newResponsibleId], {
+        subject: "Вам передано обращение",
+        text: `${appealTitle(appeal)}\nПередал(а): ${user.name}`,
+        link: `/appeals/${appealId}`,
+      })
+    );
+  }
+
   revalidatePath(`/appeals/${appealId}`);
   revalidatePath("/");
   revalidatePath("/summary");
 }
 
 /** Поручение по обращению — не меняет ответственного, просто ставит задачу конкретному человеку. */
-export async function createAppealTask(appealId: string, assigneeId: string, description: string) {
+export async function createAppealTask(appealId: string, assigneeId: string, description: string, dueDate?: string) {
   const user = await requireEditor();
   if (!description.trim()) throw new Error("Опишите поручение");
 
   const assignee = await prisma.user.findUniqueOrThrow({ where: { id: assigneeId } });
+  const appeal = await prisma.appeal.findUniqueOrThrow({ where: { id: appealId } });
+  const due = dueDate ? new Date(dueDate) : null;
+  const dueText = due ? ` (срок — ${due.toLocaleDateString("ru-RU")})` : "";
 
   await prisma.appealTask.create({
-    data: { appealId, assignedById: user.id, assigneeId, description },
+    data: { appealId, assignedById: user.id, assigneeId, description, dueDate: due },
   });
 
   await prisma.appealEvent.create({
@@ -222,9 +255,19 @@ export async function createAppealTask(appealId: string, assigneeId: string, des
       appealId,
       authorId: user.id,
       type: "NOTE",
-      message: `Поручение для ${assignee.name}: ${description}`,
+      message: `Поручение для ${assignee.name}: ${description}${dueText}`,
     },
   });
+
+  if (assigneeId !== user.id) {
+    after(() =>
+      notifyUsers([assigneeId], {
+        subject: "Новое поручение",
+        text: `${description}${dueText}\nОбращение: ${appealTitle(appeal)}\nПоручил(а): ${user.name}`,
+        link: `/appeals/${appealId}`,
+      })
+    );
+  }
 
   revalidatePath(`/appeals/${appealId}`);
   revalidatePath("/");
@@ -251,6 +294,16 @@ export async function updateTaskStatus(taskId: string, status: string) {
     where: { id: taskId },
     data: { status, completedAt: status === "DONE" ? new Date() : null },
   });
+
+  if (status === "DONE" && existing.status !== "DONE" && task.assignedById !== user.id) {
+    after(() =>
+      notifyUsers([task.assignedById], {
+        subject: "Поручение выполнено",
+        text: `${user.name}: «${task.description}»`,
+        link: `/appeals/${task.appealId}`,
+      })
+    );
+  }
 
   await prisma.appealEvent.create({
     data: {
@@ -316,4 +369,43 @@ export async function updateOutgoingNumberResult(
   }
 
   revalidatePath(`/appeals/${outgoing.appealId}`);
+}
+
+/** Зарегистрировать файл, который браузер уже загрузил в Vercel Blob. */
+export async function registerBlobAttachment(appealId: string, pathname: string, fileName: string) {
+  const user = await requireAttachmentEditor(appealId);
+  if (!pathname.startsWith(attachmentPrefix(appealId))) throw new Error("Неверный путь файла");
+
+  const blob = await head(pathname);
+  await prisma.appealAttachment.create({
+    data: {
+      appealId,
+      uploadedById: user.id,
+      fileName,
+      contentType: blob.contentType,
+      size: blob.size,
+      blobPathname: blob.pathname,
+    },
+  });
+  await prisma.appealEvent.create({
+    data: { appealId, authorId: user.id, type: "NOTE", message: `Приложен файл «${fileName}»` },
+  });
+
+  revalidatePath(`/appeals/${appealId}`);
+}
+
+export async function deleteAttachment(attachmentId: string) {
+  const attachment = await prisma.appealAttachment.findUniqueOrThrow({
+    where: { id: attachmentId },
+    select: { id: true, appealId: true, fileName: true, blobPathname: true },
+  });
+  const user = await requireAttachmentEditor(attachment.appealId);
+
+  if (attachment.blobPathname) await del(attachment.blobPathname);
+  await prisma.appealAttachment.delete({ where: { id: attachment.id } });
+  await prisma.appealEvent.create({
+    data: { appealId: attachment.appealId, authorId: user.id, type: "NOTE", message: `Удалён файл «${attachment.fileName}»` },
+  });
+
+  revalidatePath(`/appeals/${attachment.appealId}`);
 }

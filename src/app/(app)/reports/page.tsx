@@ -1,4 +1,6 @@
-import { getAllAppeals, getUsers } from "@/lib/queries";
+import Link from "next/link";
+import { getUsers } from "@/lib/queries";
+import { CHANNEL_FILTER_OPTIONS, getReportData, parseReportFilters, reportQuery, formatDate } from "@/lib/reports";
 import { requireManagementRole } from "@/lib/rbac";
 import { STAGES, STAGE_LABELS } from "@/lib/constants";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -7,28 +9,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 
-function parseDate(v?: string) {
-  return v ? new Date(v) : undefined;
-}
-
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string; responsibleId?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; responsibleId?: string; channel?: string }>;
 }) {
   await requireManagementRole();
   const params = await searchParams;
-  const [appeals, users] = await Promise.all([getAllAppeals(), getUsers()]);
-
-  const from = parseDate(params.from);
-  const to = parseDate(params.to);
-
-  const filtered = appeals.filter((a) => {
-    if (from && a.createdAt < from) return false;
-    if (to && a.createdAt > to) return false;
-    if (params.responsibleId && !a.responsible.some((r) => r.isCurrent && r.userId === params.responsibleId)) return false;
-    return true;
-  });
+  const filters = parseReportFilters(params);
+  const [data, users] = await Promise.all([getReportData(filters), getUsers()]);
+  const filtered = data.appeals;
 
   const sources = Array.from(new Set(filtered.map((a) => a.sourceChannel))).sort();
   const table = sources.map((source) => {
@@ -37,13 +27,16 @@ export default async function ReportsPage({
   });
   const totals = STAGES.map((stage) => filtered.filter((a) => a.stage === stage).length);
 
-  const query = new URLSearchParams(params as Record<string, string>).toString();
+  const query = reportQuery(filters);
+  const exportHref = (format: string) => `/api/reports/export?${query ? `${query}&` : ""}format=${format}`;
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Отчёты</h1>
-        <p className="mt-1 text-sm text-[var(--muted)]">Период + ответственный → итоги по источникам и статусам.</p>
+        <p className="mt-1 text-sm text-[var(--muted)]">
+          Период, ответственный, канал → итоги по месяцам, положительным результатам и благодарностям.
+        </p>
       </div>
 
       <Card>
@@ -66,13 +59,83 @@ export default async function ReportsPage({
                 ))}
               </NativeSelect>
             </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="channel">Канал</Label>
+              <NativeSelect id="channel" name="channel" defaultValue={params.channel ?? ""} className="min-w-56">
+                <option value="">Все каналы</option>
+                {CHANNEL_FILTER_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </NativeSelect>
+            </div>
             <Button type="submit">Сформировать</Button>
-            <a href={`/api/reports/export?${query}`}>
-              <Button type="button" variant="outline">Скачать CSV</Button>
-            </a>
+            <div className="flex gap-2">
+              <a href={exportHref("xlsx")}>
+                <Button type="button" variant="outline">Excel</Button>
+              </a>
+              <a href={exportHref("pdf")}>
+                <Button type="button" variant="outline">PDF</Button>
+              </a>
+              <a href={exportHref("csv")}>
+                <Button type="button" variant="ghost">CSV</Button>
+              </a>
+            </div>
           </form>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>По месяцам</CardTitle>
+          <CardDescription>Положительный результат — обращение решено или орган власти оказал содействие</CardDescription>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          <table className="w-full min-w-[720px] border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-[var(--border)] text-left text-xs text-[var(--muted)]">
+                {["Месяц", "Поступило", "Решено", "Положительный результат", "В работе", "Просрочено", "Благодарности", "СМИ"].map((h, i) => (
+                  <th key={h} className={i ? "px-3 py-2 text-center font-medium" : "py-2 pr-4 font-medium"}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {[...data.months, data.totals].map((m) => (
+                <tr key={m.key} className={m.key === "total" ? "font-semibold" : "border-b border-[var(--border)]"}>
+                  <td className="py-2 pr-4">{m.label}</td>
+                  {[m.total, m.resolved, m.positive, m.inProgress, m.overdue, m.gratitude, m.media].map((v, i) => (
+                    <td key={i} className="px-3 py-2 text-center tabular-nums">{v}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {[
+          { title: "Положительные результаты", items: data.positive },
+          { title: "Благодарности", items: data.gratitude },
+        ].map(({ title, items }) => (
+          <Card key={title}>
+            <CardHeader>
+              <CardTitle>{title} · {items.length}</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2">
+              {items.length === 0 && <p className="text-sm text-[var(--muted)]">Нет за выбранный период.</p>}
+              {items.slice(0, 20).map((r) => (
+                <Link key={r.id} href={`/appeals/${r.id}`} className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--surface-2)]">
+                  <p className="font-medium">{r.name} — {r.subject}</p>
+                  <p className="text-xs text-[var(--muted)]">
+                    {formatDate(r.received)} · {r.responsible || "без ответственного"}{r.result ? ` · ${r.result}` : ""}
+                  </p>
+                </Link>
+              ))}
+              {items.length > 20 && <p className="text-xs text-[var(--muted)]">…и ещё {items.length - 20} — полный список в Excel/PDF.</p>}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
 
       <Card>
         <CardHeader>

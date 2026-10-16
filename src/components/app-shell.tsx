@@ -10,11 +10,13 @@ import {
   FileBarChart,
   PlusCircle,
   LogOut,
+  UserCog,
+  Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { ROLE_LABELS, MANAGEMENT_ROLES, EDIT_BLOCKED_ROLES } from "@/lib/constants";
+import { ROLE_LABELS, ROLES, MANAGEMENT_ROLES, EDIT_BLOCKED_ROLES } from "@/lib/constants";
 
 type ShellUser = { id: string; name?: string | null; email?: string | null; role: string };
 
@@ -22,6 +24,8 @@ const NAV = [
   { href: "/", label: "Личный кабинет", icon: Inbox, roles: ["ADMIN", "KAU", "GD", "GR", "OP", "BTL_BF", "APPROVER", "PRESS"] },
   { href: "/summary", label: "Общий свод", icon: LayoutGrid, roles: [...MANAGEMENT_ROLES] },
   { href: "/reports", label: "Отчёты", icon: FileBarChart, roles: [...MANAGEMENT_ROLES] },
+  { href: "/admin/users", label: "Пользователи", icon: UserCog, roles: ["ADMIN"] },
+  { href: "/profile", label: "Профиль и уведомления", icon: Settings, roles: [...ROLES] },
 ];
 
 function initials(name?: string | null) {
@@ -52,7 +56,7 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
 
         <nav className="flex flex-1 flex-col gap-1 px-3">
           {NAV.filter((item) => item.roles.includes(user.role)).map((item) => {
-            const active = pathname === item.href;
+            const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
             const Icon = item.icon;
             return (
               <Link
@@ -106,9 +110,14 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
       <div className="flex min-h-screen flex-1 flex-col">
         <header className="sticky top-0 z-30 flex items-center justify-between border-b border-[var(--border)] bg-[var(--background)]/80 px-4 py-3 backdrop-blur-xl md:hidden">
           <p className="text-sm font-semibold">Обращения ДГД</p>
-          <Button variant="ghost" size="icon" onClick={() => signOut({ callbackUrl: "/login" })}>
-            <LogOut className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Link href="/profile" aria-label="Профиль и уведомления" className="rounded-lg p-2 hover:bg-[var(--surface-2)]">
+              <Settings className="h-4 w-4" />
+            </Link>
+            <Button variant="ghost" size="icon" onClick={() => signOut({ callbackUrl: "/login" })}>
+              <LogOut className="h-4 w-4" />
+            </Button>
+          </div>
         </header>
         <main className="flex-1 px-4 py-6 md:px-8 md:py-8">{children}</main>
       </div>

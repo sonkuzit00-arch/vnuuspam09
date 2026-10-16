@@ -27,6 +27,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { StageBadge } from "@/components/stage-badge";
 import { OutgoingNumbers } from "@/components/outgoing-numbers";
+import { AppealAttachments } from "@/components/appeal-attachments";
 import {
   STAGES,
   STAGE_LABELS,
@@ -74,16 +75,19 @@ export function AppealDetail({
   appeal,
   users,
   currentUser,
+  blobEnabled,
 }: {
   appeal: Appeal;
   users: Users;
   currentUser: CurrentUser;
+  blobEnabled: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [note, setNote] = useState("");
   const [reassignTo, setReassignTo] = useState("");
   const [taskAssignee, setTaskAssignee] = useState("");
   const [taskDescription, setTaskDescription] = useState("");
+  const [taskDueDate, setTaskDueDate] = useState("");
   const overdue = isOverdue(appeal);
   // Наблюдатель и согласующий не редактируют обращение — согласующему при
   // этом отдельно, ниже, разрешено отмечать статус СВОИХ поручений.
@@ -128,10 +132,11 @@ export function AppealDetail({
   function submitTask() {
     if (!taskAssignee || !taskDescription.trim()) return;
     startTransition(async () => {
-      await createAppealTask(appeal.id, taskAssignee, taskDescription);
+      await createAppealTask(appeal.id, taskAssignee, taskDescription, taskDueDate || undefined);
       toast.success("Поручение создано");
       setTaskAssignee("");
       setTaskDescription("");
+      setTaskDueDate("");
     });
   }
 
@@ -285,6 +290,13 @@ export function AppealDetail({
                         <option key={u.id} value={u.id}>{u.name} · {ROLE_LABELS[u.role as keyof typeof ROLE_LABELS] ?? u.role}</option>
                       ))}
                     </NativeSelect>
+                    <Input
+                      type="date"
+                      aria-label="Срок исполнения"
+                      title="Срок исполнения (необязательно)"
+                      value={taskDueDate}
+                      onChange={(e) => setTaskDueDate(e.target.value)}
+                    />
                   </div>
                   <Textarea
                     placeholder="Что нужно сделать (напр. подготовить и направить запрос, зарегистрировать в САДД, присвоить номер)"
@@ -314,7 +326,14 @@ export function AppealDetail({
                       </Badge>
                     </div>
                     <p className="text-sm text-[var(--foreground)]/80">{task.description}</p>
-                    <p className="text-xs text-[var(--muted)]">{fmt(task.createdAt)}</p>
+                    <p className="text-xs text-[var(--muted)]">
+                      {fmt(task.createdAt)}
+                      {task.dueDate && (
+                        <span className={cn("ml-2", task.status !== "DONE" && task.dueDate < new Date() && "font-medium text-rose-600")}>
+                          · срок {format(task.dueDate, "d MMMM yyyy", { locale: ru })}
+                        </span>
+                      )}
+                    </p>
                     {canActOnTasks &&
                       task.status !== "DONE" &&
                       (currentUser.role !== "APPROVER" || task.assigneeId === currentUser.id) && (
@@ -344,6 +363,13 @@ export function AppealDetail({
               </div>
             </CardContent>
           </Card>
+
+          <AppealAttachments
+            appealId={appeal.id}
+            attachments={appeal.attachments}
+            canEdit={!readOnly}
+            blobEnabled={blobEnabled}
+          />
 
           <Card>
             <CardHeader>

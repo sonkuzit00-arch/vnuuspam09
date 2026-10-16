@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAllAppeals } from "@/lib/queries";
-import { STAGE_LABELS } from "@/lib/constants";
 import { auth } from "@/lib/auth";
+import { MANAGEMENT_ROLES } from "@/lib/constants";
+import { describeFilters, formatDate, getReportData, parseReportFilters } from "@/lib/reports";
+import { buildReportPdf, buildReportXlsx } from "@/lib/report-export";
 
 function csvEscape(v: string) {
   if (v.includes(",") || v.includes("\n") || v.includes('"')) {
@@ -10,48 +11,53 @@ function csvEscape(v: string) {
   return v;
 }
 
+// ?format=xlsx | pdf | csv (по умолчанию csv) + фильтры страницы отчётов.
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return new NextResponse("Unauthorized", { status: 401 });
-  if (!["KAU", "ADMIN"].includes(session.user.role)) {
+  if (!(MANAGEMENT_ROLES as readonly string[]).includes(session.user.role)) {
     return new NextResponse("Forbidden", { status: 403 });
   }
 
   const { searchParams } = new URL(req.url);
-  const from = searchParams.get("from") ? new Date(searchParams.get("from")!) : undefined;
-  const to = searchParams.get("to") ? new Date(searchParams.get("to")!) : undefined;
-  const responsibleId = searchParams.get("responsibleId") || undefined;
+  const filters = parseReportFilters(searchParams);
+  const data = await getReportData(filters);
+  const format = searchParams.get("format") ?? "csv";
+  const stamp = new Date().toISOString().slice(0, 10);
 
-  const appeals = await getAllAppeals();
-  const filtered = appeals.filter((a) => {
-    if (from && a.createdAt < from) return false;
-    if (to && a.createdAt > to) return false;
-    if (responsibleId && !a.responsible.some((r) => r.isCurrent && r.userId === responsibleId)) return false;
-    return true;
-  });
+  if (format === "xlsx") {
+    const body = await buildReportXlsx(data, await describeFilters(filters));
+    return new NextResponse(new Uint8Array(body), {
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="report-${stamp}.xlsx"`,
+      },
+    });
+  }
 
-  const header = [
-    "Дата",
-    "ФИО",
-    "Источник",
-    "Категория",
-    "Район",
-    "Ответственный",
-    "Статус",
-    "Контрольный срок",
-    "Результат",
-  ];
+  if (format === "pdf") {
+    const body = await buildReportPdf(data, await describeFilters(filters));
+    return new NextResponse(new Uint8Array(body), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="report-${stamp}.pdf"`,
+      },
+    });
+  }
 
-  const rows = filtered.map((a) => [
-    a.createdAt.toISOString().slice(0, 10),
-    `${a.lastName} ${a.firstName ?? ""}`.trim(),
-    a.sourceChannel,
-    a.category,
-    a.district ?? "",
-    a.responsible.find((r) => r.isCurrent)?.user.name ?? "",
-    STAGE_LABELS[a.stage as keyof typeof STAGE_LABELS] ?? a.stage,
-    a.controlDate ? a.controlDate.toISOString().slice(0, 10) : "",
-    a.result ?? "",
+  const header = ["Дата", "ФИО", "Источник", "Категория", "Район", "Ответственный", "Статус", "Положительный результат", "Благодарность", "Контрольный срок", "Результат"];
+  const rows = data.rows.map((r) => [
+    formatDate(r.received),
+    r.name,
+    r.channel,
+    r.category,
+    r.district,
+    r.responsible,
+    r.stage,
+    r.positive ? "Да" : "Нет",
+    r.gratitude ? "Да" : "",
+    formatDate(r.controlDate),
+    r.result,
   ]);
 
   const csv = [header, ...rows].map((r) => r.map(csvEscape).join(",")).join("\n");
@@ -60,7 +66,7 @@ export async function GET(req: NextRequest) {
   return new NextResponse(bom + csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="report-${Date.now()}.csv"`,
+      "Content-Disposition": `attachment; filename="report-${stamp}.csv"`,
     },
   });
 }

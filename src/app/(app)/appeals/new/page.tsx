@@ -1,4 +1,4 @@
-import { getUsers } from "@/lib/queries";
+import { getActiveUsers } from "@/lib/queries";
 import { createAppeal } from "@/lib/actions";
 import { SOURCE_CHANNEL_GROUPS, DISTRICTS, CATEGORIES, TARGET_AUDIENCES, DEFAULT_RESPONSIBLE_NAME, ROLE_LABELS } from "@/lib/constants";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -9,7 +9,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Button } from "@/components/ui/button";
 
 export default async function NewAppealPage() {
-  const users = await getUsers();
+  const users = await getActiveUsers();
   const defaultResponsible = users.find((u) => u.name === DEFAULT_RESPONSIBLE_NAME);
 
   return (
