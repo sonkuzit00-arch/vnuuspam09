@@ -33,13 +33,13 @@ export default async function AdminUsersPage() {
           Учётные записи, роли, пароли. Заблокированный сотрудник не может войти, но его история сохраняется.
         </p>
       </div>
+      <DeleteAllAppeals count={appealCount} />
       <UserAdmin
         currentUserId={session.user.id}
         users={users.map(({ telegramChatId, ...u }) => ({ ...u, telegramLinked: Boolean(telegramChatId) }))}
         emailAvailable={emailConfigured()}
         telegramAvailable={telegramConfigured()}
       />
-      <DeleteAllAppeals count={appealCount} />
     </div>
   );
 }
