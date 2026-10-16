@@ -7,14 +7,14 @@
 
 ## Стек
 
-Next.js 14 (App Router) + TypeScript, Prisma + SQLite, NextAuth (Credentials),
+Next.js 16 (App Router) + TypeScript, Prisma + PostgreSQL, NextAuth (Credentials),
 Tailwind CSS + shadcn-style компоненты, framer-motion.
 
 ## Запуск
 
 ```bash
 npm install
-cp .env.example .env      # при необходимости поменяйте NEXTAUTH_SECRET
+cp .env.example .env      # укажите DATABASE_URL на свой PostgreSQL и NEXTAUTH_SECRET
 npx prisma migrate deploy
 npm run db:seed           # демо-пользователи и примеры обращений
 npm run dev
@@ -100,10 +100,28 @@ npm run dev
 сообщения`, `приём и рабочие поездки`, `личные сообщения ДГД`, `общественные
 приёмные (ОП)`, `сайт ОП (электронная форма)`, `КАУ`, `колл-центр`.
 
+## Деплой на Vercel (с паролем на весь сайт)
+
+1. [vercel.com](https://vercel.com) → **Add New → Project** → импортировать
+   этот репозиторий, ветка `obrashchenie-grazhdan` (Settings → Git →
+   Production Branch).
+2. **Storage → Create Database → Neon (Postgres)** и подключить к проекту —
+   `DATABASE_URL` пропишется автоматически.
+3. **Settings → Environment Variables**:
+   - `NEXTAUTH_SECRET` — случайная строка (`openssl rand -base64 32`);
+   - `SITE_LOGIN`, `SITE_PASSWORD` — общий логин/пароль на вход на сайт
+     (браузер спросит их до открытия любой страницы);
+   - `SEED_PASSWORD` — пароль демо-пользователей вместо `demo1234`.
+4. **Deploy**. Скрипт `vercel-build` сам применит миграции, засидит
+   демо-данные (один раз) и соберёт проект.
+
+Логин/пароль сайта в репозиторий не коммитятся — только в переменных
+окружения Vercel. Без `SITE_LOGIN`/`SITE_PASSWORD` защита отключена.
+
 ## Деплой на внутреннем сервере (без публичного доступа)
 
-Сервис рассчитан на закрытую внутреннюю сеть — наружу торчать не должен,
-поэтому Railway/Vercel-style публичный хостинг не нужен. Два варианта:
+Альтернатива для закрытой внутренней сети — наружу не торчит,
+если публичный хостинг (Vercel) не нужен. Два варианта:
 Docker (проще для обновлений) или обычный systemd-процесс.
 
 ### Вариант 1 — Docker (рекомендуется)
@@ -121,7 +139,7 @@ docker compose up -d --build
 сети, отредактируйте секцию `ports` в `docker-compose.yml` — либо укажите
 там конкретный внутренний IP сервера (`10.0.1.5:3000:3000`), либо поставьте
 перед контейнером внутренний nginx/reverse-proxy на LAN-интерфейсе. Данные
-(SQLite) хранятся в именованном docker-volume `dgd_data` и переживают
+(PostgreSQL) хранятся в именованном docker-volume `dgd_pg` и переживают
 пересборку образа.
 
 ### Вариант 2 — без Docker (systemd)
@@ -129,7 +147,7 @@ docker compose up -d --build
 ```bash
 git clone <repo> /opt/dgd-appeals && cd /opt/dgd-appeals
 npm ci
-cp .env.example .env   # заполнить как выше, DATABASE_URL можно оставить file:./dev.db
+cp .env.example .env   # заполнить как выше, DATABASE_URL — локальный PostgreSQL
 npm run build
 sudo cp deploy/dgd-appeals.service /etc/systemd/system/
 sudo systemctl daemon-reload
@@ -152,9 +170,8 @@ sudo systemctl enable --now dgd-appeals
   задачу).
 - `NEXTAUTH_SECRET` — обязателен и должен быть длинной случайной строкой,
   даже во внутренней сети (им подписываются сессии).
-- Бэкап — это просто файл SQLite (`/data/dev.db` в Docker-volume или
-  `prisma/dev.db` при systemd-варианте); регулярно копируйте его на другой
-  носитель.
+- Бэкап — `pg_dump` базы (в Docker: `docker compose exec db pg_dump -U dgd dgd > backup.sql`);
+  регулярно копируйте его на другой носитель.
 
 <details>
 <summary>Альтернатива: облачный деплой с публичной ссылкой (Railway)</summary>
@@ -163,9 +180,8 @@ sudo systemctl enable --now dgd-appeals
 задеплоить на Railway — конфиг `railway.toml` уже в репозитории.
 
 1. На [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub repo**.
-2. Добавить **Volume** (Settings → Volumes → New Volume, mount path `/data`) —
-   иначе база будет стираться при каждом передеплое.
-3. Задать переменные окружения: `DATABASE_URL=file:/data/dev.db`,
+2. Добавить **PostgreSQL** (New → Database → PostgreSQL).
+3. Задать переменные окружения: `DATABASE_URL=${{Postgres.DATABASE_URL}}`,
    `NEXTAUTH_SECRET` (случайная строка), `NEXTAUTH_URL` (домен, который
    выдаст Railway после первого деплоя — Settings → Networking).
 4. Deploy — откроется публичная ссылка вида `https://<project>.up.railway.app/login`.

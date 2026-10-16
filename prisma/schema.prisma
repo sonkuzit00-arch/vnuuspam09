@@ -1,13 +1,13 @@
 // Схема данных сервиса учёта обращений граждан ДГД.
-// SQLite не поддерживает enum/массивы в Prisma — перечисления валидируются
-// на уровне приложения (см. src/lib/constants.ts) и хранятся как String.
+// Перечисления валидируются на уровне приложения (src/lib/constants.ts)
+// и хранятся как String.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
