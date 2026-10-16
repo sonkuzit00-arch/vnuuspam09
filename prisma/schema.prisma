@@ -45,6 +45,7 @@ model Appeal {
   receivedAtDgd      DateTime?
   receivedAtKau      DateTime?
   registrationNumber String? // номер входящего в САДД
+  sourceMessageId    String?   @unique // Message-ID письма, если обращение импортировано из почты
   forwardedToOp      Boolean   @default(false)
   forwardedToOpAt    DateTime?
 

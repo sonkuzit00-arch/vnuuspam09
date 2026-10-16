@@ -6,6 +6,8 @@ import { AppealListItem } from "@/components/appeal-list-item";
 import { TaskListItem } from "@/components/task-list-item";
 import { STAGE_LABELS, STAGES } from "@/lib/constants";
 import { isOverdue } from "@/lib/sla";
+import { mailImportConfigured } from "@/lib/mail-import";
+import { ImportMailButton } from "@/components/import-mail-button";
 import { Inbox, AlertTriangle, CheckCircle2, Clock3, Route, Megaphone } from "lucide-react";
 
 export default async function CabinetPage() {
@@ -32,11 +34,14 @@ export default async function CabinetPage() {
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Личный кабинет</h1>
-        <p className="mt-1 text-sm text-[var(--muted)]">
-          Всё, что назначено вам — с любого канала: почта, соцсети, приёмные, поездки.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Личный кабинет</h1>
+          <p className="mt-1 text-sm text-[var(--muted)]">
+            Всё, что назначено вам — с любого канала: почта, соцсети, приёмные, поездки.
+          </p>
+        </div>
+        {(user.role === "KAU" || user.role === "ADMIN") && mailImportConfigured() && <ImportMailButton />}
       </div>
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">

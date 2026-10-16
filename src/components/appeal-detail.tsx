@@ -32,6 +32,8 @@ import {
   STAGES,
   STAGE_LABELS,
   RESOLUTION_PATHS,
+  CATEGORIES,
+  UNCLASSIFIED_CATEGORY,
   ROLE_LABELS,
   TASK_STATUS_LABELS,
   EDIT_BLOCKED_ROLES,
@@ -219,6 +221,21 @@ export function AppealDetail({
                   <p className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm">
                     {appeal.resolutionPath ?? "— ещё не назначено —"}
                   </p>
+                )}
+              </div>
+              <div className="flex flex-col gap-1.5 sm:col-span-2">
+                <Label>Категория</Label>
+                {canRoute && !readOnly ? (
+                  <NativeSelect defaultValue={appeal.category} onChange={(e) => handleField({ category: e.target.value })}>
+                    {!(CATEGORIES as readonly string[]).includes(appeal.category) && (
+                      <option value={appeal.category} disabled={appeal.category === UNCLASSIFIED_CATEGORY}>{appeal.category}</option>
+                    )}
+                    {CATEGORIES.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </NativeSelect>
+                ) : (
+                  <p className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm">{appeal.category}</p>
                 )}
               </div>
               <div className="flex flex-col gap-1.5">

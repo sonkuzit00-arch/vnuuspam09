@@ -45,6 +45,9 @@ export const DISTRICTS = [
   "Центральный",
 ] as const;
 
+// Категория писем, импортированных из почты, пока КАУ не выберет настоящую.
+export const UNCLASSIFIED_CATEGORY = "Требует классификации";
+
 export const CATEGORIES = [
   "СВО",
   "Материальная помощь",

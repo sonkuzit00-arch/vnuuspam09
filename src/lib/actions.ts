@@ -6,7 +6,8 @@ import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { createAppealSchema } from "@/lib/schemas";
-import { STAGE_LABELS, TASK_STATUS_LABELS, READ_ONLY_ROLES, EDIT_BLOCKED_ROLES } from "@/lib/constants";
+import { STAGE_LABELS, TASK_STATUS_LABELS, READ_ONLY_ROLES, EDIT_BLOCKED_ROLES, ROUTING_ROLES } from "@/lib/constants";
+import { importAppealsFromMail, mailImportConfigured } from "@/lib/mail-import";
 import { notifyUsers, appealsMailbox, sendEmail, appUrl } from "@/lib/notify";
 import { attachmentPrefix, requireAttachmentEditor } from "@/lib/attachments";
 import { del, head } from "@vercel/blob";
@@ -160,6 +161,7 @@ export async function updateAppealFields(
   appealId: string,
   fields: Partial<{
     subject: string;
+    category: string;
     concept: string;
     actionPlan: string;
     resolutionPath: string;
@@ -180,6 +182,7 @@ export async function updateAppealFields(
   const events: { type: string; message: string; authorId: string }[] = [];
 
   if (fields.subject !== undefined) data.subject = fields.subject;
+  if (fields.category) data.category = fields.category;
   if (fields.concept !== undefined) data.concept = fields.concept;
   if (fields.actionPlan !== undefined) data.actionPlan = fields.actionPlan;
   if (fields.resolutionPath !== undefined) {
@@ -434,4 +437,21 @@ export async function deleteAttachment(attachmentId: string) {
   });
 
   revalidatePath(`/appeals/${attachment.appealId}`);
+}
+
+/** Кнопка «Забрать письма» в кабинете КАУ/админа — импорт новых писем в обращения. */
+export async function importMailNow(): Promise<{ error?: string; imported?: number; skipped?: number; failed?: number }> {
+  const user = await requireUser();
+  if (!(ROUTING_ROLES as readonly string[]).includes(user.role)) return { error: "Доступно КАУ и администраторам" };
+  if (!mailImportConfigured()) return { error: "Импорт из почты не настроен" };
+  try {
+    const r = await importAppealsFromMail();
+    if (r.errors.length) console.error("Импорт из почты:", r.errors);
+    revalidatePath("/");
+    revalidatePath("/summary");
+    return { imported: r.imported, skipped: r.skipped, failed: r.errors.length };
+  } catch (e) {
+    console.error("Импорт из почты:", e);
+    return { error: "Не удалось подключиться к почте — проверьте IMAP-настройки" };
+  }
 }
