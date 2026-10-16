@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Обращения ДГД — демо</title>
+<!--
+  Автономный демо-просмотр сервиса «Обращения ДГД».
+  Открывается двойным щелчком в любом браузере — без сервера, базы и интернета.
+  Данные демонстрационные и хранятся только в этом браузере (localStorage).
+  Полная версия с базой данных: npm run dev (см. README).
+-->
+<style>
+:root{
+  --bg:#f6f5fb;--surface:#ffffff;--surface-2:#f1effa;--surface-3:#e7e3f7;--border:#e4e1ef;
+  --fg:#1c1830;--muted:#6b6785;--accent:#7c3aed;--accent-2:#6d28d9;--accent-soft:#ede9fe;
+  --ok:#059669;--ok-soft:#d1fae5;--warn:#b45309;--warn-soft:#fef3c7;--bad:#dc2626;--bad-soft:#fee2e2;
+  --shadow:0 1px 2px rgba(20,16,40,.06),0 4px 16px rgba(20,16,40,.05);
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0f0d18;--surface:#17141f;--surface-2:#211d2c;--surface-3:#2b2639;--border:#2c2738;
+  --fg:#ece9f5;--muted:#9a95b0;--accent:#8b5cf6;--accent-2:#a78bfa;--accent-soft:#2a2045;
+  --ok:#34d399;--ok-soft:#0f2e25;--warn:#fbbf24;--warn-soft:#33270b;--bad:#f87171;--bad-soft:#3a1717;
+  --shadow:none;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+a{color:inherit}
+h1{font-size:24px;letter-spacing:-.01em;margin:0}
+h2{font-size:15px;margin:0}
+.muted{color:var(--muted)}.small{font-size:12px}.bold{font-weight:600}
+.app{display:flex;min-height:100vh}
+aside{width:250px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+.brand{display:flex;gap:10px;align-items:center;padding:20px}
+.logo{width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#7c3aed,#6366f1);color:#fff;font-weight:700;display:grid;place-items:center}
+nav{display:flex;flex-direction:column;gap:2px;padding:0 12px;flex:1}
+nav a{padding:8px 12px;border-radius:8px;text-decoration:none;color:var(--muted);font-weight:500}
+nav a:hover{background:var(--surface-2);color:var(--fg)}
+nav a.active{background:var(--surface-2);color:var(--fg)}
+nav a.cta{background:var(--accent);color:#fff;margin-top:10px}
+.me{border-top:1px solid var(--border);padding:14px;display:flex;gap:10px;align-items:center}
+.avatar{width:32px;height:32px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-size:12px;font-weight:700;flex-shrink:0}
+main{flex:1;padding:32px;min-width:0}
+.wrap{max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:18px}
+.card-h{margin-bottom:12px}
+.grid{display:grid;gap:16px}.g2{grid-template-columns:repeat(2,minmax(0,1fr))}.g3{grid-template-columns:repeat(3,minmax(0,1fr))}.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.cols{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:20px;align-items:start}
+.stack{display:flex;flex-direction:column;gap:10px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.between{justify-content:space-between}
+.btn{border:1px solid var(--border);background:var(--surface);color:var(--fg);border-radius:8px;padding:7px 12px;font:inherit;font-weight:500;cursor:pointer}
+.btn:hover{background:var(--surface-2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}.btn.primary:hover{background:var(--accent-2)}
+.btn.ok{background:var(--ok);border-color:var(--ok);color:#fff}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.sm{padding:4px 10px;font-size:12px}
+input,select,textarea{width:100%;font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 10px}
+textarea{min-height:70px;resize:vertical}
+input[type=checkbox]{width:auto}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:500}
+.badge{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600;background:var(--surface-2);color:var(--muted);white-space:nowrap}
+.b-ok{background:var(--ok-soft);color:var(--ok)}.b-warn{background:var(--warn-soft);color:var(--warn)}.b-bad{background:var(--bad-soft);color:var(--bad)}.b-acc{background:var(--accent-soft);color:var(--accent)}
+.item{display:block;text-decoration:none;border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+a.item:hover{background:var(--surface-2)}
+.item.row{display:flex}
+.tile{display:flex;flex-direction:column;gap:4px}
+.tile .v{font-size:26px;font-weight:700;letter-spacing:-.02em}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{font-size:11px;color:var(--muted);font-weight:500;text-align:left;padding:6px 8px;border-bottom:1px solid var(--border)}
+td{padding:7px 8px;border-bottom:1px solid var(--border)}
+td.n,th.n{text-align:center;font-variant-numeric:tabular-nums}
+tr.total td{font-weight:700;border-bottom:0}
+.scroll{overflow-x:auto}
+.bar{height:10px;border-radius:6px;background:var(--accent)}
+.bars .r{display:grid;grid-template-columns:140px 1fr 30px;gap:10px;align-items:center;font-size:13px}
+.timeline .e{border-left:2px solid var(--border);padding:0 0 12px 12px;position:relative}
+.timeline .e:before{content:"";position:absolute;left:-5px;top:6px;width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.notice{background:var(--accent-soft);color:var(--fg);border-radius:10px;padding:10px 14px;font-size:13px}
+.login{min-height:100vh;display:grid;place-items:center;padding:16px}
+.login .card{width:100%;max-width:420px}
+.toast{position:fixed;bottom:20px;right:20px;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50}
+.toast.show{opacity:1}
+.mobile-h{display:none}
+@media (max-width:860px){
+  aside{display:none}.mobile-h{display:flex;position:sticky;top:0;z-index:5;background:var(--surface);border-bottom:1px solid var(--border);padding:10px 16px;gap:8px;overflow-x:auto}
+  .mobile-h a{white-space:nowrap;font-size:13px;text-decoration:none;color:var(--muted);padding:4px 8px;border-radius:6px}
+  .mobile-h a.active{background:var(--surface-2);color:var(--fg)}
+  main{padding:20px 16px}.cols,.g2,.g3{grid-template-columns:1fr}.g4{grid-template-columns:repeat(2,1fr)}
+  .app{flex-direction:column}
+}
+@media print{aside,.mobile-h,.no-print{display:none!important}main{padding:0}.card{box-shadow:none;break-inside:avoid}body{background:#fff;color:#000}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div class="toast" id="toast"></div>
+<script>
+"use strict";
+// ---------- Справочники (как в src/lib/constants.ts) ----------
+const ROLE_LABELS={ADMIN:"Администратор",KAU:"КАУ",GD:"ГД",GR:"GR",OP:"ОП",BTL_BF:"BTL / БФ",APPROVER:"Согласующий",PRESS:"Пресс-служба",VIEWER:"Наблюдатель"};
+const STAGE_LABELS={IN_PROGRESS:"В работе",CANCELLED:"Отменено",REFUSED:"Отказ",APPLICANT_DECLINED:"Отказ обратившегося",RESOLVED:"Решено"};
+const TASK_LABELS={PENDING:"Не начато",IN_PROGRESS:"В работе",DONE:"Выполнено"};
+const CHANNEL_GROUPS={"ГД":["ГД; САДД / «Дело»","ГД; почта","ГД; электронная почта","ГД; соцсети - комментарии","ГД; соцсети ДГД, личные сообщения"],"Приём и поездки":["приём и рабочие поездки","личные сообщения ДГД"],"ОП":["общественные приёмные (ОП)","сайт ОП (электронная форма)"],"КАУ / КЦ":["КАУ","колл-центр"]};
+const CHANNELS=Object.values(CHANNEL_GROUPS).flat();
+const CATEGORIES=["СВО","Материальная помощь","Водоснабжение","Водоотведение","Дороги","Теплоснабжение","Газоснабжение","Электроснабжение","Социальная поддержка","Благоустройство","Строительство","Кап.ремонт","МКД","Жилье","Здравоохранение","Твёрдые коммунальные отходы (ТКО) / вывоз мусора","Общественный транспорт","Гражданско-правовая консультация","Общее образование"];
+const DISTRICTS=["Аннинский","г. Борисоглебск","Верхнехавский","Грибановский","Новоусманский","Панинский","Поворинский","Рамонский","Терновский","Эртильский","Ленинский","Железнодорожный","Центральный"];
+const RESOLUTION_PATHS=["Депутатский запрос (ДЗ)","Типовой ответ","Типовой ответ с разъяснением","Перенаправление депутату по территориальному округу","Перенаправление профильному комитету","Юридическая консультация","БФ","BTL","Списываем в дело"];
+const MANAGEMENT=["ADMIN","KAU","APPROVER","VIEWER"],EDIT_BLOCKED=["VIEWER","APPROVER","PRESS"],ROUTING=["ADMIN","KAU"];
+const MONTHS=["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
+const groupOf=c=>Object.keys(CHANNEL_GROUPS).find(g=>CHANNEL_GROUPS[g].includes(c))||"Прочее";
+
+// ---------- Демо-данные (как prisma/seed.ts) ----------
+const DAY=864e5,ago=n=>new Date(Date.now()-n*DAY).toISOString(),ahead=n=>new Date(Date.now()+n*DAY).toISOString();
+let uid=0;const id=p=>p+(Date.now().toString(36))+(uid++);
+function seed(){
+  const U=[["yana","Христенко Яна Юрьевна","OP"],["victoria","Бабаханова Виктория","KAU"],["milana","Сибирко Милана","GD"],["sofia","Кузнецова Софья Викторовна","ADMIN"],["elena.k","Ковешникова Елена Вячеславовна","GR"],["tatiana","Путиева Татьяна Викторовна","BTL_BF"],["elena.s","Свинарева Елена","VIEWER"],["sergey","Чижов Сергей Викторович","APPROVER"],["natalya","Боровкова Наталья","PRESS"],["irina","Астафьева Ирина","ADMIN"]]
+    .map(([k,name,role])=>({id:k,name,email:k+"@dgd.local",role,active:true,notifyEmail:"",byEmail:false,byTelegram:false,telegram:false}));
+  const ev=(type,msg,author,at)=>({type,msg,author,at});
+  const A=[
+    {id:"a1",channel:"ГД; САДД / «Дело»",subject:"Отсутствие электроснабжения в СНТ",received:ago(0),lastName:"Наумов",firstName:"Илья",middleName:"Сергеевич",phone:"89001234567",goal:"Содействовать восстановлению электроснабжения в СНТ после аварии на кабельной линии",category:"Электроснабжение",district:"Центральный",stage:"IN_PROGRESS",route:"",responsible:"victoria",control:null,result:"",gratitude:false,media:false,outgoing:[],tasks:[],files:[],events:[ev("CREATED","Обращение зарегистрировано (ГД; САДД / «Дело»)","victoria",ago(0))]},
+    {id:"a2",channel:"ГД; электронная почта",subject:"О сохранении школы в с. Стадница",received:ago(11),lastName:"Коллективное обращение",firstName:"",middleName:"",goal:"Сохранить возможность обучения детей в сельской школе, не допустить закрытия здания",category:"Общее образование",district:"Рамонский",stage:"IN_PROGRESS",route:"Депутатский запрос (ДЗ)",responsible:"elena.k",control:ahead(5),result:"",gratitude:false,media:false,
+      outgoing:[{number:"ЧСВ-5/612",label:"Министерство образования Воронежской области",assistance:true,summary:"Решение о закрытии школы отложено"}],
+      tasks:[{id:"t1",by:"elena.k",to:"sofia",desc:"Подготовить текст депутатского запроса",status:"DONE",at:ago(10),due:null},{id:"t2",by:"sofia",to:"elena.k",desc:"Согласовать подготовленный текст запроса, при необходимости внести правки",status:"DONE",at:ago(9),due:null},{id:"t3",by:"sofia",to:"sergey",desc:"Согласовать итоговый текст запроса перед направлением в министерство",status:"DONE",at:ago(8),due:null},{id:"t4",by:"elena.k",to:"milana",desc:"Подготовить ответ заявителям по итогам ответа министерства",status:"PENDING",at:ago(1),due:ahead(1)}],
+      files:[{name:"Обращение_Стадница_скан.pdf",size:842113,at:ago(11),by:"victoria"},{name:"Ответ_Минобразования.pdf",size:301442,at:ago(1),by:"sofia"}],
+      events:[ev("CREATED","Обращение зарегистрировано (ГД; электронная почта)","victoria",ago(11)),ev("STAGE","КАУ: маршрут — «Депутатский запрос (ДЗ)»","victoria",ago(11)),ev("STAGE","Обращение передано: Ковешникова Елена Вячеславовна","victoria",ago(10)),ev("NOTE","Поручение для Кузнецова Софья Викторовна: подготовить текст депутатского запроса","elena.k",ago(10)),ev("NOTE","Исходящий №ЧСВ-5/612 (Министерство образования Воронежской области)","sofia",ago(7)),ev("NOTE","Ответ по исходящему №ЧСВ-5/612: содействие оказано","sofia",ago(1))]},
+    {id:"a3",channel:"ГД; соцсети - комментарии",subject:"Тротуар у лицея №65",received:ago(9),lastName:"Степанов",firstName:"Алексей",middleName:"Вениаминович",goal:"Обустроить пешеходную инфраструктуру в частном секторе рядом со школой",category:"Дороги",district:"Ленинский",stage:"RESOLVED",route:"Типовой ответ с разъяснением",responsible:"milana",control:null,result:"Направлен типовой ответ с разъяснением норм по благоустройству и сроков",resolvedAt:ago(2),gratitude:true,gratitudeAt:ago(1),media:true,outgoing:[],tasks:[],files:[],
+      events:[ev("CREATED","Обращение зарегистрировано (ГД; соцсети - комментарии)","victoria",ago(9)),ev("STAGE","Статус изменён на «Решено»","milana",ago(2)),ev("GRATITUDE","Благодарственное письмо отправлено","milana",ago(1)),ev("MEDIA","Материал направлен в СМИ","milana",ago(1))]},
+    {id:"a4",channel:"сайт ОП (электронная форма)",subject:"Застройка водоохранной зоны у СНТ «Оргнефть»",received:ago(4),lastName:"Борискина",firstName:"Наталья",middleName:"Викторовна",email:"boriskina@example.com",phone:"89042126871",goal:"Остановить застройку водоохранной зоны",category:"Гражданско-правовая консультация",district:"Центральный",stage:"IN_PROGRESS",route:"Перенаправление профильному комитету",responsible:"yana",control:ago(1),result:"",gratitude:false,media:false,outgoing:[{number:"ОП-118",label:"Комитет по экологии",assistance:null,summary:""}],tasks:[{id:"t5",by:"yana",to:"elena.k",desc:"Проработать позицию для комитета",status:"IN_PROGRESS",at:ago(3),due:ago(1)}],files:[],
+      events:[ev("CREATED","Обращение зарегистрировано (сайт ОП (электронная форма))","victoria",ago(4)),ev("STAGE","Обращение передано: Христенко Яна Юрьевна","victoria",ago(4))]},
+    {id:"a5",channel:"колл-центр",subject:"Материальная помощь многодетной семье",received:ago(2),lastName:"Орлова",firstName:"Марина",middleName:"Петровна",goal:"Оказать материальную помощь многодетной семье",category:"Материальная помощь",district:"Аннинский",stage:"IN_PROGRESS",route:"БФ",responsible:"tatiana",control:ahead(2),result:"",gratitude:false,media:false,outgoing:[],tasks:[],files:[],
+      events:[ev("CREATED","Обращение зарегистрировано (колл-центр)","victoria",ago(2)),ev("STAGE","КАУ: маршрут — «БФ»","victoria",ago(2))]},
+    {id:"a6",channel:"приём и рабочие поездки",subject:"Капремонт сельского дома культуры",received:ago(6),lastName:"Степанищева",firstName:"Елена",middleName:"Владимировна",goal:"Провести капитальный ремонт сельского дома культуры",category:"Кап.ремонт",district:"Грибановский",stage:"RESOLVED",route:"Депутатский запрос (ДЗ)",responsible:"elena.k",control:null,result:"Объект включён в программу капремонта на следующий год",resolvedAt:ago(1),gratitude:true,gratitudeAt:ago(0),media:false,outgoing:[],tasks:[],files:[],
+      events:[ev("CREATED","Обращение зарегистрировано (приём и рабочие поездки)","victoria",ago(6)),ev("STAGE","Статус изменён на «Решено»","elena.k",ago(1))]},
+    {id:"a7",channel:"личные сообщения ДГД",subject:"Вывоз мусора в пос. Рамонь",received:ago(38),lastName:"Пахомов",firstName:"Виктор",middleName:"",goal:"Наладить регулярный вывоз ТКО",category:"Твёрдые коммунальные отходы (ТКО) / вывоз мусора",district:"Рамонский",stage:"RESOLVED",route:"Типовой ответ",responsible:"milana",control:null,result:"График вывоза восстановлен",resolvedAt:ago(30),gratitude:true,gratitudeAt:ago(29),media:false,outgoing:[],tasks:[],files:[],
+      events:[ev("CREATED","Обращение зарегистрировано (личные сообщения ДГД)","victoria",ago(38))]},
+  ];
+  return {users:U,appeals:A};
+}
+const KEY="dgd-preview-v1";
+let db;
+try{db=JSON.parse(localStorage.getItem(KEY))}catch{}
+if(!db||!db.users)db=seed();
+function save(){try{localStorage.setItem(KEY,JSON.stringify(db))}catch{}}
+let me=null;try{me=sessionStorage.getItem(KEY+"-me")}catch{}
+
+// ---------- Утилиты ----------
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const user=k=>db.users.find(u=>u.id===k)||{name:"—",role:""};
+const cur=()=>user(me);
+const fmt=d=>d?new Date(d).toLocaleDateString("ru-RU"):"—";
+const fmtT=d=>d?new Date(d).toLocaleString("ru-RU",{day:"numeric",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"}):"—";
+const initials=n=>n.split(" ").slice(0,2).map(p=>p[0]).join("").toUpperCase();
+const fullName=a=>[a.lastName,a.firstName,a.middleName].filter(Boolean).join(" ");
+const size=b=>b<1024?b+" Б":b<1048576?Math.round(b/1024)+" КБ":(b/1048576).toFixed(1)+" МБ";
+const isOverdue=a=>a.stage==="IN_PROGRESS"&&a.control&&new Date(a.control)<new Date();
+const isPositive=a=>a.stage==="RESOLVED"||a.outgoing.some(o=>o.assistance===true);
+const stageBadge=a=>{const c=a.stage==="RESOLVED"?"b-ok":a.stage==="IN_PROGRESS"?(isOverdue(a)?"b-bad":"b-warn"):"";return `<span class="badge ${c}">${isOverdue(a)?"Просрочено":STAGE_LABELS[a.stage]}</span>`};
+function toast(t){const el=$("#toast");el.textContent=t;el.classList.add("show");clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove("show"),1800)}
+function log(a,type,msg){a.events.unshift({type,msg,author:me,at:new Date().toISOString()})}
+const canEdit=()=>!EDIT_BLOCKED.includes(cur().role);
+function download(name,content,type){const b=new Blob([content],{type});const u=URL.createObjectURL(b);const l=document.createElement("a");l.href=u;l.download=name;l.click();setTimeout(()=>URL.revokeObjectURL(u),1000)}
+const fileData={}; // содержимое приложенных в этой сессии файлов (в localStorage не кладём)
+
+// ---------- Каркас ----------
+function navItems(){
+  const r=cur().role,all=Object.keys(ROLE_LABELS);
+  return [["#/","Личный кабинет",all.filter(x=>x!=="VIEWER")],["#/summary","Общий свод",MANAGEMENT],["#/reports","Отчёты",MANAGEMENT],["#/admin","Пользователи",["ADMIN"]],["#/profile","Профиль и уведомления",all]].filter(i=>i[2].includes(r));
+}
+function shell(content){
+  const route=location.hash||"#/",u=cur();
+  const link=([h,l])=>`<a href="${h}" class="${(h==="#/"?route==="#/":route.startsWith(h))?"active":""}">${l}</a>`;
+  const items=navItems();
+  return `<div class="app">
+  <aside><div class="brand"><div class="logo">О</div><div><div class="bold">Обращения ДГД</div><div class="small muted">демо · локальный просмотр</div></div></div>
+  <nav>${items.map(link).join("")}${canEdit()?`<a href="#/new" class="cta">+ Новое обращение</a>`:""}</nav>
+  <div class="me"><div class="avatar">${initials(u.name)}</div><div style="flex:1;min-width:0"><div class="small bold" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(u.name)}</div><div class="small muted">${ROLE_LABELS[u.role]}</div></div><button class="btn ghost sm" data-act="logout" title="Выйти">Выйти</button></div></aside>
+  <div class="mobile-h">${items.map(link).join("")}${canEdit()?`<a href="#/new">+ Новое</a>`:""}<a href="#" data-act="logout">Выйти</a></div>
+  <main><div class="wrap">${content}</div></main></div>`;
+}
+function appealItem(a){
+  return `<a class="item" href="#/appeal/${a.id}"><div class="row between"><span class="bold">${esc(fullName(a))}${a.subject?" — "+esc(a.subject):""}</span>${stageBadge(a)}</div>
+  <div class="small muted">${fmt(a.received)} · ${esc(a.channel)} · ${esc(a.category)} · ${esc(user(a.responsible).name)}${a.control?" · срок "+fmt(a.control):""}</div></a>`;
+}
+const card=(title,body,desc="")=>`<div class="card"><div class="card-h"><h2>${title}</h2>${desc?`<div class="small muted">${desc}</div>`:""}</div>${body}</div>`;
+const list=(arr,fn,empty)=>arr.length?`<div class="stack">${arr.map(fn).join("")}</div>`:`<div class="muted">${empty}</div>`;
+
+// ---------- Экраны ----------
+function viewLogin(){
+  return `<div class="login"><div class="card stack">
+  <div class="row"><div class="logo">О</div><div><h1 style="font-size:20px">Обращения ДГД</h1><div class="small muted">Демо-просмотр без сервера</div></div></div>
+  <div class="notice">Это автономная HTML-версия с демо-данными. Выберите сотрудника — интерфейс покажет его роль и права.</div>
+  <label class="f">Войти как<select id="loginAs">${db.users.filter(u=>u.active).map(u=>`<option value="${u.id}" ${u.id==="sofia"?"selected":""}>${esc(u.name)} — ${ROLE_LABELS[u.role]}</option>`).join("")}</select></label>
+  <button class="btn primary" data-act="login">Войти</button>
+  <button class="btn ghost sm" data-act="reset">Сбросить демо-данные</button></div></div>`;
+}
+function viewHome(){
+  const u=cur();
+  if(u.role==="PRESS")return `<h1>Освещено в СМИ</h1>`+card("Обращения с отметкой «СМИ»",list(db.appeals.filter(a=>a.media),appealItem,"Пока нет."));
+  const mine=db.appeals.filter(a=>a.responsible===me);
+  const tasks=db.appeals.flatMap(a=>a.tasks.filter(t=>t.to===me).map(t=>({...t,a})));
+  const routing=ROUTING.includes(u.role)?db.appeals.filter(a=>!a.route&&a.stage==="IN_PROGRESS"):[];
+  return `<div><h1>Личный кабинет</h1><div class="muted">Всё, что назначено вам — с любого канала.</div></div>
+  ${routing.length?card(`Требуют маршрутизации · ${routing.length}`,list(routing,appealItem,""),"Назначьте формат ответа и ответственного"):""}
+  <div class="grid g4">${tile("Мои обращения",mine.length)}${tile("В работе",mine.filter(a=>a.stage==="IN_PROGRESS").length)}${tile("Просрочено",mine.filter(isOverdue).length)}${tile("Поручений открыто",tasks.filter(t=>t.status!=="DONE").length)}</div>
+  ${card("Мои поручения",list(tasks,t=>`<a class="item" href="#/appeal/${t.a.id}"><div class="row between"><span>${esc(t.desc)}</span><span class="badge ${t.status==="DONE"?"b-ok":t.status==="IN_PROGRESS"?"b-warn":""}">${TASK_LABELS[t.status]}</span></div><div class="small muted">от ${esc(user(t.by).name)} · ${esc(t.a.subject||t.a.lastName)}${t.due?` · <span style="${t.status!=="DONE"&&new Date(t.due)<new Date()?"color:var(--bad);font-weight:600":""}">срок ${fmt(t.due)}</span>`:""}</div></a>`,"Поручений нет."))}
+  ${card("Мои обращения",list(mine,appealItem,"Обращений нет."))}`;
+}
+const tile=(l,v,hint="")=>`<div class="card tile"><span class="small muted">${l}</span><span class="v">${v}</span>${hint?`<span class="small muted">${hint}</span>`:""}</div>`;
+
+function viewAppeal(aid){
+  const a=db.appeals.find(x=>x.id===aid);if(!a)return `<h1>Не найдено</h1>`;
+  const u=cur(),edit=canEdit(),route=ROUTING.includes(u.role);
+  const others=db.users.filter(x=>x.active&&x.id!==me);
+  return `<div class="row between"><div><div class="small muted">${esc(a.channel)} · ${fmt(a.received)}</div><h1>${esc(fullName(a))}</h1><div class="muted">${esc(a.subject||"")}</div></div><div class="row">${stageBadge(a)}${a.gratitude?'<span class="badge b-ok">Благодарность</span>':""}${a.media?'<span class="badge b-acc">СМИ</span>':""}</div></div>
+  ${edit?`<div class="row no-print">${Object.keys(STAGE_LABELS).map(s=>`<button class="btn sm ${a.stage===s?"primary":""}" data-act="stage" data-id="${a.id}" data-v="${s}">${STAGE_LABELS[s]}</button>`).join("")}</div>`:""}
+  <div class="cols"><div class="stack" style="gap:20px">
+  ${card("Суть обращения",`<p style="margin:0">${esc(a.goal)}</p>`,esc(a.category))}
+  ${card("Маршрут КАУ",`<div class="grid g2"><label class="f">Формат ответа<select data-field="route" data-id="${a.id}" ${route?"":"disabled"}><option value="">— не назначен —</option>${RESOLUTION_PATHS.map(p=>`<option ${a.route===p?"selected":""}>${p}</option>`).join("")}</select></label>
+   <label class="f">Контрольный срок<input type="date" data-field="control" data-id="${a.id}" value="${a.control?a.control.slice(0,10):""}" ${edit?"":"disabled"}></label></div>
+   <label class="f" style="margin-top:12px">Результат<textarea data-field="result" data-id="${a.id}" ${edit?"":"disabled"}>${esc(a.result)}</textarea></label>
+   ${a.outgoing.length?`<div class="stack" style="margin-top:12px">${a.outgoing.map(o=>`<div class="item"><span class="bold">Исх. №${esc(o.number)}</span> <span class="muted">${esc(o.label)}</span><div class="small">Содействие: ${o.assistance===true?'<span class="badge b-ok">оказано</span>':o.assistance===false?'<span class="badge b-bad">не оказано</span>':'<span class="badge">ответа нет</span>'} ${esc(o.summary)}</div></div>`).join("")}</div>`:""}`)}
+  ${card("Поручения",`${edit?`<div class="stack no-print" style="border:1px dashed var(--border);border-radius:10px;padding:10px;margin-bottom:12px"><div class="grid g2"><select id="tTo"><option value="">Кому поручить…</option>${others.map(x=>`<option value="${x.id}">${esc(x.name)} · ${ROLE_LABELS[x.role]}</option>`).join("")}</select><input type="date" id="tDue" title="Срок исполнения"></div><textarea id="tDesc" placeholder="Что нужно сделать"></textarea><button class="btn primary sm" style="align-self:flex-end" data-act="task" data-id="${a.id}">Поручить</button></div>`:""}
+   ${list(a.tasks,t=>`<div class="item"><div class="row between"><span class="bold">${esc(user(t.by).name)} → ${esc(user(t.to).name)}</span><span class="badge ${t.status==="DONE"?"b-ok":t.status==="IN_PROGRESS"?"b-warn":""}">${TASK_LABELS[t.status]}</span></div><div>${esc(t.desc)}</div><div class="small muted">${fmtT(t.at)}${t.due?` · <span style="${t.status!=="DONE"&&new Date(t.due)<new Date()?"color:var(--bad);font-weight:600":""}">срок ${fmt(t.due)}</span>`:""}</div>
+   ${t.status!=="DONE"&&u.role!=="VIEWER"&&(u.role!=="APPROVER"||t.to===me)?`<div class="row no-print" style="margin-top:6px">${t.status==="PENDING"&&u.role!=="APPROVER"?`<button class="btn sm" data-act="tstatus" data-id="${a.id}" data-t="${t.id}" data-v="IN_PROGRESS">Взять в работу</button>`:""}<button class="btn ok sm" data-act="tstatus" data-id="${a.id}" data-t="${t.id}" data-v="DONE">${u.role==="APPROVER"?"Согласовать":"Выполнено"}</button></div>`:""}</div>`,"Поручений пока нет.")}`,"Кто кому что поручил (цепочка делегирования)")}
+  ${card("Файлы",`${list(a.files,(f,i)=>`<div class="item row between"><div><div class="bold">${fileData[a.id+i]?`<a href="${fileData[a.id+i]}" target="_blank">${esc(f.name)}</a>`:esc(f.name)}</div><div class="small muted">${size(f.size)} · ${fmtT(f.at)} · ${esc(user(f.by).name)}</div></div>${edit?`<button class="btn ghost sm no-print" data-act="fdel" data-id="${a.id}" data-i="${i}">Удалить</button>`:""}</div>`,"Файлов пока нет.")}
+   ${edit?`<label class="btn sm no-print" style="display:inline-block;margin-top:10px">Приложить файлы<input type="file" multiple hidden data-act="files" data-id="${a.id}"></label>`:""}`,"Сканы письма, ответы органов власти")}
+  ${card("История взаимодействия",`<div class="timeline">${a.events.map(e=>`<div class="e"><div>${esc(e.msg)}</div><div class="small muted">${fmtT(e.at)} · ${esc(user(e.author).name)}</div></div>`).join("")}</div>`)}
+  </div><div class="stack" style="gap:20px">
+  ${card("Заявитель",`<div class="stack small"><div>${esc(fullName(a))}</div>${a.phone?`<div>☎ ${esc(a.phone)}</div>`:""}${a.email?`<div>✉ ${esc(a.email)}</div>`:""}<div>📍 ${esc(a.district||"—")}</div></div>`)}
+  ${card("Ответственный",`<div class="row"><div class="avatar">${initials(user(a.responsible).name)}</div><div><div class="bold">${esc(user(a.responsible).name)}</div><div class="small muted">${ROLE_LABELS[user(a.responsible).role]}</div></div></div>
+   ${edit?`<div class="stack no-print" style="margin-top:12px"><select id="reTo"><option value="">Передать обращение…</option>${others.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join("")}</select><button class="btn sm" data-act="reassign" data-id="${a.id}">Передать</button></div>`:""}`)}
+  ${card("Регламент",`<label class="row"><input type="checkbox" data-flag="gratitude" data-id="${a.id}" ${a.gratitude?"checked":""} ${edit?"":"disabled"}> Благодарственное письмо</label><label class="row"><input type="checkbox" data-flag="media" data-id="${a.id}" ${a.media?"checked":""} ${edit?"":"disabled"}> Освещено в СМИ</label>`)}
+  </div></div>`;
+}
+
+function viewNew(){
+  if(!canEdit())return `<h1>Нет доступа</h1>`;
+  const opt=(arr,sel)=>arr.map(x=>`<option ${x===sel?"selected":""}>${esc(x)}</option>`).join("");
+  return `<h1>Новое обращение</h1>${card("Регистрация",`<form id="newForm" class="stack">
+  <div class="grid g2"><label class="f">Канал поступления<select name="channel">${Object.entries(CHANNEL_GROUPS).map(([g,cs])=>`<optgroup label="${g}">${opt(cs)}</optgroup>`).join("")}</select></label><label class="f">Тема письма<input name="subject"></label></div>
+  <div class="grid g3"><label class="f">Фамилия*<input name="lastName" required></label><label class="f">Имя<input name="firstName"></label><label class="f">Отчество<input name="middleName"></label></div>
+  <div class="grid g3"><label class="f">Телефон<input name="phone"></label><label class="f">Email<input name="email" type="email"></label><label class="f">Район<select name="district"><option value="">—</option>${opt(DISTRICTS)}</select></label></div>
+  <label class="f">Суть обращения*<textarea name="goal" required></textarea></label>
+  <div class="grid g3"><label class="f">Категория<select name="category">${opt(CATEGORIES)}</select></label><label class="f">Ответственный<select name="responsible">${db.users.filter(u=>u.active).map(u=>`<option value="${u.id}" ${u.id==="victoria"?"selected":""}>${esc(u.name)}</option>`).join("")}</select></label><label class="f">Контрольный срок<input type="date" name="control"></label></div>
+  <button class="btn primary" style="align-self:flex-start">Зарегистрировать</button></form>`)}`;
+}
+
+function viewSummary(){
+  const A=db.appeals,pct=n=>A.length?Math.round(n/A.length*100):0;
+  const groups=Object.keys(CHANNEL_GROUPS).map(g=>[g,A.filter(a=>groupOf(a.channel)===g).length]);
+  const max=Math.max(1,...groups.map(g=>g[1]));
+  const people=db.users.map(u=>{const m=A.filter(a=>a.responsible===u.id);return [u.name,m.filter(a=>a.stage==="RESOLVED").length,m.filter(a=>a.stage==="IN_PROGRESS"&&!isOverdue(a)).length,m.filter(isOverdue).length]}).filter(p=>p[1]+p[2]+p[3]);
+  const tasks=A.flatMap(a=>a.tasks.map(t=>({...t,a}))).sort((x,y)=>y.at.localeCompare(x.at));
+  return `<div><h1>Общий свод</h1><div class="muted">Вся команда в одном месте.</div></div>
+  <div class="grid g4">${tile("Всего обращений",A.length)}${tile("Просрочено",A.filter(isOverdue).length)}${tile("Благодарности, %",pct(A.filter(a=>a.gratitude).length))}${tile("СМИ, %",pct(A.filter(a=>a.media).length))}</div>
+  <div class="grid g2">${card("По группам каналов",`<div class="stack bars">${groups.map(([g,n])=>`<div class="r"><span>${g}</span><div class="bar" style="width:${n/max*100}%;min-width:${n?4:0}px"></div><span class="bold">${n}</span></div>`).join("")}</div>`,"Все «ГД; …» объединены в один хэштег")}
+  ${card("Результаты по участникам",`<div class="scroll"><table><tr><th>Сотрудник</th><th class="n">Решено</th><th class="n">В работе</th><th class="n">Просрочено</th></tr>${people.map(p=>`<tr><td>${esc(p[0])}</td><td class="n">${p[1]}</td><td class="n">${p[2]}</td><td class="n">${p[3]}</td></tr>`).join("")}</table></div>`)}</div>
+  ${card("Кому как делегируются задачи",list(tasks,t=>`<a class="item" href="#/appeal/${t.a.id}"><div class="row between"><span>${esc(user(t.by).name)} → ${esc(user(t.to).name)}</span><span class="badge ${t.status==="DONE"?"b-ok":t.status==="IN_PROGRESS"?"b-warn":""}">${TASK_LABELS[t.status]}</span></div><div class="small muted">${esc(t.desc)}</div></a>`,"Поручений нет."))}`;
+}
+
+let rf={from:"",to:"",resp:"",channel:""};
+function reportData(){
+  const from=rf.from?new Date(rf.from):null,to=rf.to?new Date(new Date(rf.to).getTime()+DAY):null;
+  const A=db.appeals.filter(a=>{const d=new Date(a.received);if(from&&d<from)return false;if(to&&d>=to)return false;if(rf.resp&&a.responsible!==rf.resp)return false;
+    if(rf.channel){if(rf.channel.startsWith("group:")){if(groupOf(a.channel)!==rf.channel.slice(6))return false}else if(a.channel!==rf.channel)return false}return true})
+    .sort((x,y)=>x.received.localeCompare(y.received));
+  const m={};for(const a of A){const d=new Date(a.received),k=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+    const r=m[k]||(m[k]={label:MONTHS[d.getMonth()]+" "+d.getFullYear(),total:0,resolved:0,positive:0,progress:0,overdue:0,gratitude:0,media:0});
+    r.total++;if(a.stage==="RESOLVED")r.resolved++;if(isPositive(a))r.positive++;if(a.stage==="IN_PROGRESS")r.progress++;if(isOverdue(a))r.overdue++;if(a.gratitude)r.gratitude++;if(a.media)r.media++}
+  const months=Object.keys(m).sort().map(k=>m[k]);
+  const totals=months.reduce((t,r)=>{for(const k in t)if(k!=="label")t[k]+=r[k];return t},{label:"Итого",total:0,resolved:0,positive:0,progress:0,overdue:0,gratitude:0,media:0});
+  return {A,months,totals,positive:A.filter(isPositive),gratitude:A.filter(a=>a.gratitude)};
+}
+const MCOLS=[["label","Месяц"],["total","Поступило"],["resolved","Решено"],["positive","Положительный результат"],["progress","В работе"],["overdue","Просрочено"],["gratitude","Благодарности"],["media","СМИ"]];
+const RCOLS=[["Дата",a=>fmt(a.received)],["Заявитель",fullName],["Тема",a=>a.subject||a.goal],["Канал",a=>a.channel],["Категория",a=>a.category],["Ответственный",a=>user(a.responsible).name],["Статус",a=>STAGE_LABELS[a.stage]],["Положительный результат",a=>isPositive(a)?"Да":"Нет"],["Результат",a=>a.result||a.outgoing.map(o=>o.summary).filter(Boolean).join("; ")],["Благодарность",a=>a.gratitude?fmt(a.gratitudeAt)||"Да":""]];
+function monthTable(d){return `<table><tr>${MCOLS.map(([,h],i)=>`<th class="${i?"n":""}">${h}</th>`).join("")}</tr>${[...d.months,d.totals].map((r,i,arr)=>`<tr class="${i===arr.length-1?"total":""}">${MCOLS.map(([k],j)=>`<td class="${j?"n":""}">${esc(r[k])}</td>`).join("")}</tr>`).join("")}</table>`}
+function rowsTable(arr){return arr.length?`<table><tr>${RCOLS.map(([h])=>`<th>${h}</th>`).join("")}</tr>${arr.map(a=>`<tr>${RCOLS.map(([,f])=>`<td>${esc(f(a))}</td>`).join("")}</tr>`).join("")}</table>`:`<div class="muted">Нет за выбранный период.</div>`}
+function viewReports(){
+  const d=reportData();
+  const chOpts=Object.entries(CHANNEL_GROUPS).flatMap(([g,cs])=>[[`group:${g}`,`${g} — все каналы`],...cs.map(c=>[c,"  "+c])]);
+  return `<div><h1>Отчёты</h1><div class="muted">Итоги по месяцам, положительным результатам и благодарностям.</div></div>
+  <div class="card no-print"><div class="grid g4" style="align-items:end">
+   <label class="f">Начало периода<input type="date" data-rf="from" value="${rf.from}"></label><label class="f">Конец периода<input type="date" data-rf="to" value="${rf.to}"></label>
+   <label class="f">Ответственный<select data-rf="resp"><option value="">Все</option>${db.users.map(u=>`<option value="${u.id}" ${rf.resp===u.id?"selected":""}>${esc(u.name)}</option>`).join("")}</select></label>
+   <label class="f">Канал<select data-rf="channel"><option value="">Все каналы</option>${chOpts.map(([v,l])=>`<option value="${esc(v)}" ${rf.channel===v?"selected":""}>${esc(l)}</option>`).join("")}</select></label></div>
+   <div class="row" style="margin-top:12px"><button class="btn" data-act="xls">Скачать Excel</button><button class="btn" data-act="print">PDF / печать</button><button class="btn ghost" data-act="csv">CSV</button></div></div>
+  ${card("По месяцам",`<div class="scroll">${monthTable(d)}</div>`,"Положительный результат — обращение решено или орган власти оказал содействие")}
+  ${card(`Положительные результаты · ${d.positive.length}`,`<div class="scroll">${rowsTable(d.positive)}</div>`)}
+  ${card(`Благодарности · ${d.gratitude.length}`,`<div class="scroll">${rowsTable(d.gratitude)}</div>`)}`;
+}
+function exportXls(){
+  const d=reportData();
+  const sheet=(t,body)=>`<h3>${t}</h3>${body}<br>`;
+  const html=`<html><head><meta charset="utf-8"></head><body>${sheet("По месяцам",monthTable(d))}${sheet("Положительные результаты",rowsTable(d.positive))}${sheet("Благодарности",rowsTable(d.gratitude))}${sheet("Все обращения",rowsTable(d.A))}</body></html>`;
+  download(`report-${new Date().toISOString().slice(0,10)}.xls`,html,"application/vnd.ms-excel");
+}
+function exportCsv(){
+  const d=reportData(),q=v=>/[",\n]/.test(v)?`"${v.replace(/"/g,'""')}"`:v;
+  const csv=[RCOLS.map(c=>c[0]),...d.A.map(a=>RCOLS.map(([,f])=>String(f(a))))].map(r=>r.map(q).join(",")).join("\n");
+  download(`report-${new Date().toISOString().slice(0,10)}.csv`,"﻿"+csv,"text/csv");
+}
+
+function viewAdmin(){
+  if(cur().role!=="ADMIN")return `<h1>Нет доступа</h1>`;
+  return `<div><h1>Пользователи</h1><div class="muted">Учётные записи и роли. Заблокированный не может войти, история сохраняется.</div></div>
+  ${card("Новый пользователь",`<div class="grid g4" style="align-items:end"><label class="f">ФИО<input id="nuName"></label><label class="f">Email (логин)<input id="nuEmail" type="email"></label><label class="f">Роль<select id="nuRole">${Object.entries(ROLE_LABELS).map(([k,l])=>`<option value="${k}" ${k==="GD"?"selected":""}>${l}</option>`).join("")}</select></label><button class="btn primary" data-act="adduser">Создать</button></div>`)}
+  ${card(`Все пользователи · ${db.users.length}`,`<div class="stack">${db.users.map(u=>`<div class="item row between" style="${u.active?"":"opacity:.55"}"><div class="row"><div class="avatar">${initials(u.name)}</div><div><div class="bold">${esc(u.name)} ${u.active?"":'<span class="badge b-bad">Заблокирован</span>'}</div><div class="small muted">${esc(u.email)}${u.byEmail?" · ✉":""}${u.byTelegram&&u.telegram?" · Telegram":""}</div></div></div>
+   <div class="row"><select data-role="${u.id}" style="width:auto" ${u.id===me?"disabled":""}>${Object.entries(ROLE_LABELS).map(([k,l])=>`<option value="${k}" ${u.role===k?"selected":""}>${l}</option>`).join("")}</select><button class="btn sm" data-act="resetpw" data-id="${u.id}">Сбросить пароль</button>${u.id!==me?`<button class="btn ghost sm" data-act="block" data-id="${u.id}">${u.active?"Заблокировать":"Разблокировать"}</button>`:""}</div></div>`).join("")}</div>`)}`;
+}
+function viewProfile(){
+  const u=cur();
+  return `<div><h1>Профиль</h1><div class="muted">${esc(u.name)} · ${esc(u.email)}</div></div>
+  ${card("Уведомления",`<div class="stack"><label class="row"><input type="checkbox" id="pEmail" ${u.byEmail?"checked":""}> На почту</label><input id="pEmailAddr" placeholder="${esc(u.email)}" value="${esc(u.notifyEmail)}">
+   <label class="row"><input type="checkbox" id="pTg" ${u.byTelegram?"checked":""} ${u.telegram?"":"disabled"}> В Telegram</label>
+   ${u.telegram?`<div class="row"><span class="small" style="color:var(--ok)">Telegram привязан</span><button class="btn ghost sm" data-act="tgunlink">Отвязать</button></div>`:`<button class="btn sm" style="align-self:flex-start" data-act="tglink">Привязать Telegram</button>`}
+   <div class="row"><button class="btn primary" data-act="saveprofile">Сохранить</button><button class="btn" data-act="testnotify">Проверить</button></div>
+   <div class="small muted">Приходят: новое обращение или поручение на вас, передача обращения, выполнение вашего поручения, приближение сроков. В демо уведомления не отправляются.</div></div>`,"Каждый сотрудник настраивает сам")}`;
+}
+
+// ---------- Роутер и события ----------
+function render(){
+  if(!me||!db.users.find(u=>u.id===me)){$("#root").innerHTML=viewLogin();return}
+  const h=location.hash||"#/";let c;
+  if(h.startsWith("#/appeal/"))c=viewAppeal(h.slice(9));
+  else c=({"#/new":viewNew,"#/summary":viewSummary,"#/reports":viewReports,"#/admin":viewAdmin,"#/profile":viewProfile}[h]||(cur().role==="VIEWER"?viewSummary:viewHome))();
+  $("#root").innerHTML=shell(c);
+}
+window.addEventListener("hashchange",()=>{render();scrollTo(0,0)});
+const find=aid=>db.appeals.find(a=>a.id===aid);
+function done(msg){save();render();if(msg)toast(msg)}
+
+document.addEventListener("click",e=>{
+  const b=e.target.closest("[data-act]");if(!b||b.tagName==="INPUT")return;
+  const act=b.dataset.act,a=b.dataset.id&&find(b.dataset.id);
+  switch(act){
+    case "login":me=$("#loginAs").value;try{sessionStorage.setItem(KEY+"-me",me)}catch{};location.hash="#/";render();break;
+    case "logout":e.preventDefault();me=null;try{sessionStorage.removeItem(KEY+"-me")}catch{};render();break;
+    case "reset":db=seed();save();toast("Демо-данные восстановлены");break;
+    case "stage":a.stage=b.dataset.v;if(a.stage==="RESOLVED")a.resolvedAt=new Date().toISOString();log(a,"STAGE",`Статус изменён на «${STAGE_LABELS[a.stage]}»`);done("Статус: "+STAGE_LABELS[a.stage]);break;
+    case "task":{const to=$("#tTo").value,desc=$("#tDesc").value.trim(),due=$("#tDue").value;if(!to||!desc)return toast("Выберите исполнителя и опишите поручение");
+      a.tasks.push({id:id("t"),by:me,to,desc,status:"PENDING",at:new Date().toISOString(),due:due?new Date(due).toISOString():null});log(a,"NOTE",`Поручение для ${user(to).name}: ${desc}${due?` (срок — ${fmt(due)})`:""}`);done("Поручение создано");break}
+    case "tstatus":{const t=a.tasks.find(x=>x.id===b.dataset.t);t.status=b.dataset.v;log(a,"STAGE",`Поручение: статус «${TASK_LABELS[t.status]}»`);done("Готово");break}
+    case "reassign":{const to=$("#reTo").value;if(!to)return;a.responsible=to;log(a,"STAGE",`Обращение передано: ${user(to).name}`);done("Обращение передано");break}
+    case "fdel":{const f=a.files.splice(+b.dataset.i,1)[0];log(a,"NOTE",`Удалён файл «${f.name}»`);done("Файл удалён");break}
+    case "xls":exportXls();break;case "csv":exportCsv();break;case "print":window.print();break;
+    case "adduser":{const name=$("#nuName").value.trim(),email=$("#nuEmail").value.trim().toLowerCase();if(name.length<2||!email.includes("@"))return toast("Укажите ФИО и email");
+      if(db.users.some(u=>u.email===email))return toast("Такой email уже есть");db.users.push({id:id("u"),name,email,role:$("#nuRole").value,active:true,notifyEmail:"",byEmail:false,byTelegram:false,telegram:false});done("Пользователь создан");break}
+    case "resetpw":toast("В полной версии здесь выдаётся новый пароль");break;
+    case "block":{const u=user(b.dataset.id);u.active=!u.active;done(u.active?"Разблокирован":"Заблокирован");break}
+    case "tglink":cur().telegram=true;cur().byTelegram=true;done("Telegram привязан (демо)");break;
+    case "tgunlink":cur().telegram=false;cur().byTelegram=false;done("Telegram отвязан");break;
+    case "saveprofile":{const u=cur();u.byEmail=$("#pEmail").checked;u.notifyEmail=$("#pEmailAddr").value.trim();u.byTelegram=$("#pTg").checked;done("Настройки сохранены");break}
+    case "testnotify":toast("В демо уведомления не отправляются");break;
+  }
+});
+document.addEventListener("change",e=>{
+  const t=e.target,a=t.dataset.id&&find(t.dataset.id);
+  if(t.dataset.field&&a){
+    if(t.dataset.field==="route"){a.route=t.value;log(a,"STAGE",`КАУ: маршрут — «${t.value||"не назначен"}»`)}
+    else if(t.dataset.field==="control")a.control=t.value?new Date(t.value).toISOString():null;
+    else a[t.dataset.field]=t.value;
+    done("Сохранено");
+  }else if(t.dataset.flag&&a){
+    a[t.dataset.flag]=t.checked;if(t.dataset.flag==="gratitude")a.gratitudeAt=t.checked?new Date().toISOString():null;
+    log(a,t.dataset.flag==="gratitude"?"GRATITUDE":"MEDIA",t.dataset.flag==="gratitude"?(t.checked?"Благодарственное письмо отправлено":"Отметка о благодарности снята"):(t.checked?"Материал направлен в СМИ":"Отметка об СМИ снята"));done();
+  }else if(t.dataset.act==="files"&&a){
+    for(const f of t.files){const i=a.files.length;a.files.push({name:f.name,size:f.size,at:new Date().toISOString(),by:me});fileData[a.id+i]=URL.createObjectURL(f);log(a,"NOTE",`Приложен файл «${f.name}»`)}
+    done("Файлы приложены");
+  }else if(t.dataset.rf){rf[t.dataset.rf]=t.value;render()}
+  else if(t.dataset.role){user(t.dataset.role).role=t.value;done("Роль изменена")}
+});
+document.addEventListener("submit",e=>{
+  if(e.target.id!=="newForm")return;e.preventDefault();
+  const f=Object.fromEntries(new FormData(e.target));
+  const a={id:id("a"),channel:f.channel,subject:f.subject,received:new Date().toISOString(),lastName:f.lastName,firstName:f.firstName,middleName:f.middleName,phone:f.phone,email:f.email,goal:f.goal,category:f.category,district:f.district,stage:"IN_PROGRESS",route:"",responsible:f.responsible,control:f.control?new Date(f.control).toISOString():null,result:"",gratitude:false,media:false,outgoing:[],tasks:[],files:[],events:[]};
+  log(a,"CREATED",`Обращение зарегистрировано (${a.channel})`);db.appeals.unshift(a);save();location.hash="#/appeal/"+a.id;toast("Обращение зарегистрировано");
+});
+render();
+</script>
+</body>
+</html>
