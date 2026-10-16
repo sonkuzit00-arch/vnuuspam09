@@ -129,8 +129,8 @@ npm run dev
 ## Деплой на Vercel (с паролем на весь сайт)
 
 1. [vercel.com](https://vercel.com) → **Add New → Project** → импортировать
-   этот репозиторий, ветка `obrashchenie-grazhdan` (Settings → Git →
-   Production Branch).
+   этот репозиторий. **Root Directory** оставить пустым, Production Branch —
+   `main` (Settings → Environments → Production → Branch Tracking).
 2. **Storage → Create Database → Neon (Postgres)** и подключить к проекту —
    `DATABASE_URL` пропишется автоматически.
 3. **Settings → Environment Variables**:
