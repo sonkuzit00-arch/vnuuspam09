@@ -1,4 +1,5 @@
 import "dotenv/config";
+import "./src/lib/database-url";
 import path from "node:path";
 import { defineConfig } from "prisma/config";
 
