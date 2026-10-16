@@ -633,3 +633,17 @@ export async function deleteProcessStep(eventId: string): Promise<{ error?: stri
   revalidatePath(`/appeals/${ev.appealId}`);
   return {};
 }
+
+/** Удалить одно обращение целиком (поручения, история, файлы) — только администратор. */
+export async function deleteAppeal(appealId: string) {
+  const user = await requireUser();
+  if (user.role !== "ADMIN") throw new Error("Удалять обращения может только администратор");
+  const files = await prisma.appealAttachment.findMany({
+    where: { appealId, blobPathname: { not: null } },
+    select: { blobPathname: true },
+  });
+  if (files.length && process.env.BLOB_READ_WRITE_TOKEN) await del(files.map((f) => f.blobPathname!));
+  await prisma.appeal.delete({ where: { id: appealId } });
+  revalidatePath("/", "layout");
+  redirect("/");
+}

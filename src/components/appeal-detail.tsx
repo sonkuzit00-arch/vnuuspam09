@@ -53,6 +53,7 @@ import {
   updateTaskStatus,
   approveImportedAppeal,
   rejectImportedAppeal,
+  deleteAppeal,
 } from "@/lib/actions";
 
 type Appeal = NonNullable<Awaited<ReturnType<typeof getAppeal>>>;
@@ -176,9 +177,10 @@ export function AppealDetail({
           </p>
         </div>
 
-        {!readOnly && !pendingImport && (
-          <div className="flex flex-wrap gap-2">
-            {STAGES.map((s) => (
+        <div className="flex flex-wrap gap-2">
+          {!readOnly &&
+            !pendingImport &&
+            STAGES.map((s) => (
               <Button
                 key={s}
                 size="sm"
@@ -189,8 +191,23 @@ export function AppealDetail({
                 {STAGE_LABELS[s]}
               </Button>
             ))}
-          </div>
-        )}
+          {currentUser.role === "ADMIN" && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-500/40 dark:hover:bg-red-500/10"
+              disabled={pending}
+              onClick={() =>
+                confirm("Удалить это обращение вместе с поручениями, историей и файлами? Это нельзя отменить.") &&
+                startTransition(async () => {
+                  await deleteAppeal(appeal.id);
+                })
+              }
+            >
+              Удалить обращение
+            </Button>
+          )}
+        </div>
       </div>
 
       {pendingImport && (
