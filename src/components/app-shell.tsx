@@ -13,6 +13,7 @@ import {
   UserCog,
   Settings,
   BookUser,
+  Gift,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -26,6 +27,7 @@ const NAV = [
   { href: "/summary", label: "Общий свод", icon: LayoutGrid, roles: [...MANAGEMENT_ROLES] },
   { href: "/reports", label: "Отчёты", icon: FileBarChart, roles: [...MANAGEMENT_ROLES] },
   { href: "/contacts", label: "Контакты ОГВ", icon: BookUser, roles: [...ROLES] },
+  { href: "/gifts", label: "Реестр подарков", icon: Gift, roles: [...ROLES] },
   { href: "/admin/users", label: "Пользователи", icon: UserCog, roles: ["ADMIN"] },
   { href: "/profile", label: "Профиль и уведомления", icon: Settings, roles: [...ROLES] },
 ];
@@ -115,6 +117,9 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
           <div className="flex items-center gap-1">
             <Link href="/contacts" aria-label="Контакты ОГВ" className="rounded-lg p-2 hover:bg-[var(--surface-2)]">
               <BookUser className="h-4 w-4" />
+            </Link>
+            <Link href="/gifts" aria-label="Реестр подарков" className="rounded-lg p-2 hover:bg-[var(--surface-2)]">
+              <Gift className="h-4 w-4" />
             </Link>
             <Link href="/profile" aria-label="Профиль и уведомления" className="rounded-lg p-2 hover:bg-[var(--surface-2)]">
               <Settings className="h-4 w-4" />

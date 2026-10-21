@@ -198,3 +198,6 @@ export const SLA_HOURS = {
   registrationInKau: 3,
   conceptAndPlan: 2,
 };
+
+// Категории реестра подарков.
+export const GIFT_CATEGORIES = ["Алкоголь", "Сертификат", "Сувенир", "Другое"] as const;

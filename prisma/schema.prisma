@@ -33,6 +33,8 @@ model User {
   tasksReceived AppealTask[]        @relation("TasksReceived")
   attachments   AppealAttachment[]
   govContacts   GovContact[]        @relation("GovContactsCreated")
+  giftItems     GiftItem[]          @relation("GiftItemsCreated")
+  giftIssues    GiftIssue[]         @relation("GiftIssuesCreated")
 
   @@map("users")
 }
@@ -229,4 +231,42 @@ model GovContact {
 
   @@index([organization])
   @@map("gov_contacts")
+}
+
+// Реестр подарков в наличии (алкоголь, сертификаты, сувениры).
+// quantity — сколько осталось; выдача после согласования ЧСВ уменьшает
+// остаток и записывается в GiftIssue. Позиция с нулевым остатком
+// пропадает из «В наличии», но её история выдач сохраняется.
+model GiftItem {
+  id          String      @id @default(cuid())
+  category    String // Алкоголь | Сертификат | Сувенир | Другое
+  name        String
+  description String?
+  nominal     Int? // номинал сертификата / цена, ₽
+  quantity    Int         @default(1)
+  note        String?
+  createdBy   User?       @relation("GiftItemsCreated", fields: [createdById], references: [id], onDelete: SetNull)
+  createdById String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  issues      GiftIssue[]
+
+  @@map("gift_items")
+}
+
+// Выдача подарка, согласованная ЧСВ.
+model GiftIssue {
+  id         String   @id @default(cuid())
+  item       GiftItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  itemId     String
+  quantity   Int      @default(1)
+  recipient  String // кому
+  reason     String? // повод
+  approvedAt DateTime // дата согласования ЧСВ
+  issuedBy   User?    @relation("GiftIssuesCreated", fields: [issuedById], references: [id], onDelete: SetNull)
+  issuedById String?
+  createdAt  DateTime @default(now())
+
+  @@index([itemId])
+  @@map("gift_issues")
 }
