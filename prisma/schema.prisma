@@ -32,6 +32,7 @@ model User {
   tasksAssigned AppealTask[]        @relation("TasksAssigned")
   tasksReceived AppealTask[]        @relation("TasksReceived")
   attachments   AppealAttachment[]
+  govContacts   GovContact[]        @relation("GovContactsCreated")
 
   @@map("users")
 }
@@ -207,4 +208,25 @@ model AppealAttachment {
 
   @@index([appealId])
   @@map("appeal_attachments")
+}
+
+// Книжка контактов ОГВ: сотрудники органов власти, с которыми работаем по
+// обращениям. Общая для всех пользователей.
+model GovContact {
+  id           String   @id @default(cuid())
+  organization String // орган власти
+  department   String? // управление / отдел
+  fullName     String
+  position     String?
+  phone        String?
+  mobilePhone  String?
+  email        String?
+  note         String?
+  createdBy    User?    @relation("GovContactsCreated", fields: [createdById], references: [id], onDelete: SetNull)
+  createdById  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([organization])
+  @@map("gov_contacts")
 }
