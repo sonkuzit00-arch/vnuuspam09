@@ -3,7 +3,23 @@ import path from "node:path";
 import ExcelJS from "exceljs";
 import { jsPDF } from "jspdf";
 import { autoTable } from "jspdf-autotable";
-import { formatDate, type MonthRow, type ReportData, type ReportRow } from "@/lib/reports";
+import { formatDate, kpiLines, type MonthRow, type ReportData, type ReportRow, type StatRow } from "@/lib/reports";
+
+const STAT_HEADERS: { key: keyof StatRow; header: string; width: number }[] = [
+  { key: "total", header: "Поступило", width: 11 },
+  { key: "closed", header: "Отработано", width: 11 },
+  { key: "inProgress", header: "В работе", width: 10 },
+  { key: "overdue", header: "Просрочено", width: 11 },
+  { key: "positivePct", header: "Положительный результат, %", width: 14 },
+  { key: "inTimePct", header: "В срок, %", width: 10 },
+  { key: "avgDays", header: "Ср. дней на обращение", width: 12 },
+  { key: "dz", header: "ДЗ", width: 6 },
+  { key: "gratitude", header: "Благодарности", width: 13 },
+];
+const statValue = (r: StatRow, k: keyof StatRow) => {
+  const v = r[k];
+  return typeof v === "number" && k === "avgDays" ? Math.round(v * 10) / 10 : v;
+};
 
 const MONTH_COLUMNS: { header: string; key: keyof MonthRow; width: number }[] = [
   { header: "Месяц", key: "label", width: 18 },
@@ -57,6 +73,14 @@ export async function buildReportXlsx(data: ReportData, description: string) {
   const wb = new ExcelJS.Workbook();
   wb.creator = "Обращения ДГД";
 
+  const summary = wb.addWorksheet("Сводка");
+  summary.columns = [
+    { header: "Показатель", width: 44 },
+    { header: "Значение", width: 26 },
+  ];
+  for (const line of kpiLines(data.kpi)) summary.addRow(line);
+  styleHeader(summary);
+
   const months = wb.addWorksheet("По месяцам");
   months.columns = MONTH_COLUMNS.map((c) => ({ header: c.header, key: c.key, width: c.width }));
   for (const m of data.months) months.addRow(m);
@@ -69,6 +93,21 @@ export async function buildReportXlsx(data: ReportData, description: string) {
     italic: true,
     color: { argb: "FF6B7280" },
   };
+
+
+  const breakdowns: [string, string, StatRow[]][] = [
+    ["По темам", "Тема", data.breakdowns.category],
+    ["По регионам", "Регион (★ — приоритет)", data.breakdowns.region],
+    ["По каналам", "Канал", data.breakdowns.channel],
+    ["По форматам", "Формат отработки", data.breakdowns.format],
+    ["По сотрудникам", "Ответственный", data.breakdowns.responsible],
+  ];
+  for (const [title, first, rows] of breakdowns) {
+    const sheet = wb.addWorksheet(title);
+    sheet.columns = [{ header: first, width: 40 }, ...STAT_HEADERS.map((c) => ({ header: c.header, width: c.width }))];
+    for (const r of rows) sheet.addRow([r.label, ...STAT_HEADERS.map((c) => statValue(r, c.key))]);
+    styleHeader(sheet);
+  }
 
   addRowsSheet(wb, "Положительные результаты", data.positive);
   addRowsSheet(wb, "Благодарности", data.gratitude);
@@ -142,6 +181,25 @@ export async function buildReportPdf(data: ReportData, description: string) {
   doc.setFontSize(9);
   doc.text(`${description} · сформирован ${new Date().toLocaleString("ru-RU")}`, 12, y);
   y += 8;
+
+  heading("Ключевые показатели");
+  autoTable(doc, {
+    ...tableStyles,
+    startY: y,
+    head: [["Показатель", "Значение"]],
+    body: kpiLines(data.kpi),
+    columnStyles: { 0: { cellWidth: 110 } },
+  });
+  afterTable();
+
+  heading("По темам");
+  autoTable(doc, {
+    ...tableStyles,
+    startY: y,
+    head: [["Тема", ...STAT_HEADERS.map((c) => c.header)]],
+    body: data.breakdowns.category.map((r) => [r.label, ...STAT_HEADERS.map((c) => String(statValue(r, c.key) ?? "—"))]),
+  });
+  afterTable();
 
   heading("По месяцам");
   autoTable(doc, {

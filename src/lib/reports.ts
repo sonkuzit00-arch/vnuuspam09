@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { isOverdue } from "@/lib/sla";
-import { STAGE_LABELS, SOURCE_CHANNEL_GROUPS, getChannelGroup } from "@/lib/constants";
+import { STAGE_LABELS, SOURCE_CHANNEL_GROUPS, getChannelGroup, isPriorityRegion } from "@/lib/constants";
 
 // Общие данные отчётов: страница /reports и выгрузки CSV / Excel / PDF
 // считают одно и то же по одинаковым фильтрам.
@@ -154,6 +154,14 @@ export async function getReportData(filters: ReportFilters) {
     rows,
     months,
     totals,
+    kpi: computeKpi(appeals),
+    breakdowns: {
+      category: groupStats(appeals, (a) => a.category),
+      region: groupStats(appeals, (a) => (a.region ? `${a.region}${isPriorityRegion(a.region) ? " ★" : ""}` : "Регион не указан")),
+      channel: groupStats(appeals, (a) => `${getChannelGroup(a.sourceChannel)} · ${a.sourceChannel}`),
+      format: groupStats(appeals, (a) => a.resolutionPath ?? "Не промаршрутизировано"),
+      responsible: groupStats(appeals, (a) => a.responsible[0]?.user.name ?? "Без ответственного"),
+    },
     positive: rows.filter((r) => r.positive),
     gratitude: rows.filter((r) => r.gratitude),
   };
@@ -180,4 +188,127 @@ export async function describeFilters(filters: ReportFilters) {
 
 export function formatDate(d: Date | null) {
   return d ? d.toLocaleDateString("ru-RU") : "";
+}
+
+// ---------------------------------------------------------------------------
+// Аналитика: сколько поступило, сколько отработано, сколько времени уходит
+// ---------------------------------------------------------------------------
+
+const HOUR = 3_600_000;
+const DAY = 86_400_000;
+/** По 59-ФЗ — 30 дней, если контрольный срок не задан. */
+const LEGAL_TERM_DAYS = 30;
+
+const isClosed = (a: LoadedAppeal) => a.stage !== "IN_PROGRESS";
+const daysToClose = (a: LoadedAppeal) => (a.resolvedAt ? (a.resolvedAt.getTime() - receivedDate(a).getTime()) / DAY : null);
+const hoursToRoute = (a: LoadedAppeal) => (a.routedAt ? (a.routedAt.getTime() - receivedDate(a).getTime()) / HOUR : null);
+/** Закрыто в срок: до контрольной даты (включительно), без неё — за 30 дней. */
+function closedInTime(a: LoadedAppeal) {
+  if (!a.resolvedAt) return null;
+  if (a.controlDate) return a.resolvedAt.getTime() <= a.controlDate.getTime() + DAY;
+  return (daysToClose(a) ?? 0) <= LEGAL_TERM_DAYS;
+}
+
+const avg = (xs: number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : null);
+function median(xs: number[]) {
+  if (!xs.length) return null;
+  const v = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(v.length / 2);
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+}
+const pct = (part: number, whole: number) => (whole ? Math.round((part / whole) * 100) : null);
+const nums = (xs: (number | null)[]) => xs.filter((x): x is number => x !== null);
+
+export type StatRow = {
+  label: string;
+  total: number;
+  closed: number;
+  inProgress: number;
+  overdue: number;
+  positive: number;
+  positivePct: number | null;
+  avgDays: number | null;
+  inTimePct: number | null;
+  dz: number;
+  gratitude: number;
+};
+
+export function groupStats(appeals: LoadedAppeal[], key: (a: LoadedAppeal) => string): StatRow[] {
+  const groups = new Map<string, LoadedAppeal[]>();
+  for (const a of appeals) groups.set(key(a), [...(groups.get(key(a)) ?? []), a]);
+  return Array.from(groups.entries())
+    .map(([label, list]) => {
+      const closed = list.filter(isClosed);
+      const timed = nums(closed.map(closedInTime).map((v) => (v === null ? null : Number(v))));
+      const positive = list.filter(isPositive).length;
+      return {
+        label,
+        total: list.length,
+        closed: closed.length,
+        inProgress: list.length - closed.length,
+        overdue: list.filter(isOverdue).length,
+        positive,
+        positivePct: pct(positive, closed.length),
+        avgDays: avg(nums(closed.map(daysToClose))),
+        inTimePct: timed.length ? Math.round((timed.filter(Boolean).length / timed.length) * 100) : null,
+        dz: list.filter((a) => a.dzSentAt).length,
+        gratitude: list.filter((a) => a.gratitudeSent).length,
+      };
+    })
+    .sort((x, y) => y.total - x.total);
+}
+
+export type Kpi = ReturnType<typeof computeKpi>;
+
+export function computeKpi(appeals: LoadedAppeal[]) {
+  const closed = appeals.filter(isClosed);
+  const timed = nums(closed.map(closedInTime).map((v) => (v === null ? null : Number(v))));
+  const closeDays = nums(closed.map(daysToClose));
+  const routeHours = nums(appeals.map(hoursToRoute));
+  const positive = appeals.filter(isPositive).length;
+  const outgoing = appeals.flatMap((a) => a.outgoingNumbers);
+  const answered = outgoing.filter((o) => o.assistanceProvided !== null);
+  return {
+    total: appeals.length,
+    closed: closed.length,
+    inProgress: appeals.length - closed.length,
+    overdue: appeals.filter(isOverdue).length,
+    positive,
+    positivePct: pct(positive, closed.length),
+    inTimePct: timed.length ? Math.round((timed.filter(Boolean).length / timed.length) * 100) : null,
+    avgDaysToClose: avg(closeDays),
+    medianDaysToClose: median(closeDays),
+    avgHoursToRoute: avg(routeHours),
+    dzSent: appeals.filter((a) => a.dzSentAt).length,
+    ogvAnswered: answered.length,
+    ogvAssistancePct: pct(answered.filter((o) => o.assistanceProvided).length, answered.length),
+    gratitude: appeals.filter((a) => a.gratitudeSent).length,
+    media: appeals.filter((a) => a.mediaCoverageSent).length,
+    mass: appeals.filter((a) => a.isMass).length,
+    collective: appeals.filter((a) => a.isCollective).length,
+    priorityRegion: appeals.filter((a) => isPriorityRegion(a.region)).length,
+  };
+}
+
+/** Строки «показатель — значение» для Excel/PDF и письма-журнала. */
+export function kpiLines(k: Kpi): [string, string][] {
+  const n = (v: number | null, digits = 1) => (v === null ? "—" : v.toFixed(digits).replace(".", ","));
+  const p = (v: number | null) => (v === null ? "—" : `${v}%`);
+  return [
+    ["Поступило обращений", String(k.total)],
+    ["Отработано (закрыто)", String(k.closed)],
+    ["В работе", String(k.inProgress)],
+    ["Просрочено", String(k.overdue)],
+    ["Закрыто в срок", p(k.inTimePct)],
+    ["Положительный результат", `${k.positive} (${p(k.positivePct)} от закрытых)`],
+    ["Среднее время до маршрутизации КАУ, ч", n(k.avgHoursToRoute)],
+    ["Среднее время отработки, дней", n(k.avgDaysToClose)],
+    ["Медиана времени отработки, дней", n(k.medianDaysToClose)],
+    ["Направлено ДЗ", String(k.dzSent)],
+    ["Ответов ОГВ получено / с содействием", `${k.ogvAnswered} / ${p(k.ogvAssistancePct)}`],
+    ["Благодарности", String(k.gratitude)],
+    ["Освещено в СМИ", String(k.media)],
+    ["Из приоритетных регионов", String(k.priorityRegion)],
+    ["Массовые / коллективные", `${k.mass} / ${k.collective}`],
+  ];
 }

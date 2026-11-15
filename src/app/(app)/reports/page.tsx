@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getUsers } from "@/lib/queries";
+import { KpiGrid, StatTable } from "@/components/report-analytics";
 import { appealsMailbox } from "@/lib/notify";
 import { EmailReportButton } from "@/components/email-report-button";
 import { CHANNEL_FILTER_OPTIONS, getReportData, parseReportFilters, reportQuery, formatDate } from "@/lib/reports";
@@ -86,6 +87,8 @@ export default async function ReportsPage({
           </form>
         </CardContent>
       </Card>
+
+      <KpiGrid kpi={data.kpi} />
 
       <Card>
         <CardHeader>
@@ -177,6 +180,11 @@ export default async function ReportsPage({
           </table>
         </CardContent>
       </Card>
+      <StatTable title="По темам" description="Категории обращений: сколько поступило, сколько отработано и за какое время" rows={data.breakdowns.category} first="Тема" />
+      <StatTable title="По регионам" description="★ — приоритетные регионы по регламенту" rows={data.breakdowns.region} first="Регион" />
+      <StatTable title="По каналам поступления" rows={data.breakdowns.channel} first="Канал" />
+      <StatTable title="По форматам отработки" rows={data.breakdowns.format} first="Формат" />
+      <StatTable title="По сотрудникам" description="Нагрузка и скорость: кто сколько ведёт и за сколько дней закрывает" rows={data.breakdowns.responsible} first="Ответственный" />
     </div>
   );
 }

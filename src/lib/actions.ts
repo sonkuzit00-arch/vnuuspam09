@@ -134,7 +134,8 @@ export async function updateAppealStage(appealId: string, stage: string) {
     where: { id: appealId },
     data: {
       stage,
-      resolvedAt: stage === "RESOLVED" ? new Date() : undefined,
+      // время закрытия — для любого итога, иначе аналитика времени отработки неполная
+      resolvedAt: stage === "IN_PROGRESS" ? null : new Date(),
       events: {
         create: {
           type: "STAGE_CHANGE",
