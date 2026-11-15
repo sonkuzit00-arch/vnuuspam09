@@ -54,7 +54,9 @@ import {
   approveImportedAppeal,
   rejectImportedAppeal,
   deleteAppeal,
+  setDzStep,
 } from "@/lib/actions";
+import { isPriorityRegion } from "@/lib/constants";
 
 type Appeal = NonNullable<Awaited<ReturnType<typeof getAppeal>>>;
 type Users = Awaited<ReturnType<typeof getUsers>>;
@@ -84,11 +86,15 @@ export function AppealDetail({
   users,
   currentUser,
   blobEnabled,
+  similarCount = 0,
+  ogvOrganizations = [],
 }: {
   appeal: Appeal;
   users: Users;
   currentUser: CurrentUser;
   blobEnabled: boolean;
+  similarCount?: number;
+  ogvOrganizations?: string[];
 }) {
   const [pending, startTransition] = useTransition();
   const [note, setNote] = useState("");
@@ -121,9 +127,20 @@ export function AppealDetail({
 
   function handleField(name: Parameters<typeof updateAppealFields>[1]) {
     startTransition(async () => {
-      await updateAppealFields(appeal.id, name);
+      const r = await updateAppealFields(appeal.id, name);
+      if (r?.error) toast.error(r.error);
     });
   }
+
+  function handleDzStep(step: "approved" | "signed" | "sent", done: boolean) {
+    startTransition(async () => {
+      const r = await setDzStep(appeal.id, step, done);
+      if (r.error) toast.error(r.error);
+    });
+  }
+
+  const priority = isPriorityRegion(appeal.region);
+  const isDz = (appeal.resolutionPath ?? "").includes("Депутатский запрос");
 
   function submitNote() {
     if (!note.trim()) return;
@@ -171,10 +188,30 @@ export function AppealDetail({
             </h1>
             <StageBadge stage={appeal.stage} />
             {overdue && <Badge variant="destructive">просрочено</Badge>}
+            {priority && <Badge variant="warning">приоритетный регион</Badge>}
+            {appeal.isMass && <Badge variant="secondary">массовое</Badge>}
           </div>
           <p className="mt-1 text-sm text-[var(--muted)]">
-            {appeal.sourceChannel} · зарегистрировано {fmt(appeal.receivedAtKau ?? appeal.createdAt)}
+            ОГ-{appeal.number} · {appeal.sourceChannel}
+            {appeal.region ? ` · ${appeal.region}` : ""} · зарегистрировано {fmt(appeal.receivedAtKau ?? appeal.createdAt)}
           </p>
+          {appeal.isMass && (
+            <p className={cn("mt-1 text-xs font-medium", priority ? "text-amber-700 dark:text-amber-300" : "text-[var(--muted)]")}>
+              {priority
+                ? "Массовое из приоритетного региона — по регламенту ответ обязателен."
+                : "Массовое не из приоритетного региона — по регламенту на массовые не нашей территории не отвечаем."}
+            </p>
+          )}
+          {!appeal.isMass && similarCount >= 5 && (
+            <p className="mt-1 text-xs font-medium text-sky-700 dark:text-sky-300">
+              Похоже на массовое: ещё {similarCount} обращений с такой же темой за 90 дней.
+              {!readOnly && (
+                <button type="button" className="ml-2 underline" onClick={() => handleField({ isMass: true })}>
+                  Отметить массовым
+                </button>
+              )}
+            </p>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -337,11 +374,12 @@ export function AppealDetail({
                 )}
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label>Куда направлено (депутат/комитет)</Label>
+                <Label>{isDz ? "ОГВ, куда направляется ДЗ" : "Куда направлено (депутат/комитет)"}</Label>
                 {canRoute && !readOnly ? (
                   <Input
                     defaultValue={appeal.routingTarget ?? ""}
-                    placeholder="ФИО депутата / название комитета"
+                    list="ogv-organizations"
+                    placeholder={isDz ? "Орган власти из книжки контактов" : "ФИО депутата / название комитета"}
                     onBlur={(e) => handleField({ routingTarget: e.target.value })}
                   />
                 ) : (
@@ -349,7 +387,50 @@ export function AppealDetail({
                     {appeal.routingTarget || "—"}
                   </p>
                 )}
+                <datalist id="ogv-organizations">
+                  {ogvOrganizations.map((o) => (
+                    <option key={o} value={o} />
+                  ))}
+                </datalist>
               </div>
+              {isDz && (
+                <div className="flex flex-col gap-3 sm:col-span-2">
+                  <EditableField
+                    label="Почему именно этот ОГВ (обязательно для ДЗ)"
+                    defaultValue={appeal.ogvJustification ?? ""}
+                    onSave={(v) => handleField({ ogvJustification: v })}
+                    rows={2}
+                    readOnly={readOnly}
+                  />
+                  <div className="flex flex-col gap-1.5">
+                    <Label>Этапы ДЗ по регламенту</Label>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      <ToggleRow
+                        label={`Согласовано ДГД${appeal.dgdApprovedAt ? ` · ${format(appeal.dgdApprovedAt, "d MMM", { locale: ru })}` : ""}`}
+                        checked={Boolean(appeal.dgdApprovedAt)}
+                        onChange={(v) => handleDzStep("approved", v)}
+                        disabled={readOnly || pending}
+                      />
+                      <ToggleRow
+                        label={`Подписано депутатом${appeal.deputySignedAt ? ` · ${format(appeal.deputySignedAt, "d MMM", { locale: ru })}` : ""}`}
+                        checked={Boolean(appeal.deputySignedAt)}
+                        onChange={(v) => handleDzStep("signed", v)}
+                        disabled={readOnly || pending}
+                      />
+                      <ToggleRow
+                        label={`Направлено в ОГВ${appeal.dzSentAt ? ` · ${format(appeal.dzSentAt, "d MMM", { locale: ru })}` : ""}`}
+                        checked={Boolean(appeal.dzSentAt)}
+                        onChange={(v) => handleDzStep("sent", v)}
+                        disabled={readOnly || pending}
+                      />
+                    </div>
+                    <p className="text-xs text-[var(--muted)]">
+                      После согласования ДГД проект печатается и подписывается лично депутатом. ДЗ на имя губернатора
+                      Воронежской области не направляем. После направления — промежуточный ответ гражданину.
+                    </p>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -633,6 +714,19 @@ export function AppealDetail({
               <CardTitle>Регистрация</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3 text-sm">
+              <EditableField
+                label="Регион"
+                defaultValue={appeal.region ?? ""}
+                onSave={(v) => handleField({ region: v })}
+                compact
+                readOnly={readOnly}
+              />
+              <ToggleRow
+                label="Массовое обращение"
+                checked={appeal.isMass}
+                onChange={(v) => handleField({ isMass: v })}
+                disabled={readOnly}
+              />
               <EditableField
                 label="Тема письма"
                 defaultValue={appeal.subject ?? ""}

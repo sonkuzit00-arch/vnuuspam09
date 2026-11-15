@@ -27,6 +27,9 @@ export const createAppealSchema = z.object({
   targetAudience: z.enum(TARGET_AUDIENCES).optional(),
   responsibleId: z.string().min(1, "Выберите ответственного"),
   controlDate: z.string().optional(),
+  receivedAtDgd: z.string().optional(),
+  region: z.string().optional(),
+  isMass: z.coerce.boolean().optional(),
 });
 
 export type CreateAppealInput = z.infer<typeof createAppealSchema>;

@@ -1,11 +1,17 @@
 import { prisma } from "@/lib/prisma";
+import { isPriorityRegion } from "@/lib/constants";
+
+/** Приоритетные регионы — первыми, остальной порядок сохраняется. */
+function priorityFirst<T extends { region: string | null }>(items: T[]) {
+  return [...items].sort((a, b) => Number(isPriorityRegion(b.region)) - Number(isPriorityRegion(a.region)));
+}
 
 export async function getMyAppeals(userId: string) {
-  return prisma.appeal.findMany({
+  return priorityFirst(await prisma.appeal.findMany({
     where: { importStatus: null, responsible: { some: { userId, isCurrent: true } } },
     orderBy: { updatedAt: "desc" },
     include: { responsible: { include: { user: true }, where: { isCurrent: true } } },
-  });
+  }));
 }
 
 /** Поручения, назначенные конкретному человеку (не обязательно он — ответственный за обращение). */
@@ -24,11 +30,11 @@ export async function getMyTasks(userId: string) {
  * записан ответственный.
  */
 export async function getAppealsNeedingRouting() {
-  return prisma.appeal.findMany({
+  return priorityFirst(await prisma.appeal.findMany({
     where: { importStatus: null, resolutionPath: null, stage: "IN_PROGRESS" },
     orderBy: { createdAt: "asc" },
     include: { responsible: { include: { user: true }, where: { isCurrent: true } } },
-  });
+  }));
 }
 
 export async function getAllAppeals() {
@@ -90,4 +96,27 @@ export async function getUsers() {
 /** Для выбора ответственного/исполнителя — без заблокированных. */
 export async function getActiveUsers() {
   return prisma.user.findMany({ where: { isActive: true }, orderBy: { name: "asc" } });
+}
+
+/** «Похоже на массовое»: обращения с такой же темой за 90 дней (кроме этого). */
+export async function countSimilarAppeals(appeal: { id: string; subject: string | null; goal: string }) {
+  const topic = (appeal.subject || appeal.goal).trim();
+  return prisma.appeal.count({
+    where: {
+      id: { not: appeal.id },
+      importStatus: null,
+      createdAt: { gte: new Date(Date.now() - 90 * 86_400_000) },
+      OR: [{ subject: { equals: topic, mode: "insensitive" } }, { goal: { equals: topic, mode: "insensitive" } }],
+    },
+  });
+}
+
+/** Органы власти из книжки контактов — подсказки для поля «ОГВ». */
+export async function getOgvOrganizations() {
+  const rows = await prisma.govContact.findMany({
+    distinct: ["organization"],
+    select: { organization: true },
+    orderBy: { organization: "asc" },
+  });
+  return rows.map((r) => r.organization);
 }

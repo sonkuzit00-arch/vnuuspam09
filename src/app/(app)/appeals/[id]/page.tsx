@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { getAppeal, getActiveUsers } from "@/lib/queries";
+import { getAppeal, getActiveUsers, countSimilarAppeals, getOgvOrganizations } from "@/lib/queries";
 import { AppealDetail } from "@/components/appeal-detail";
 
 export default async function AppealPage({ params }: { params: Promise<{ id: string }> }) {
@@ -14,5 +14,16 @@ export default async function AppealPage({ params }: { params: Promise<{ id: str
     notFound();
   }
 
-  return <AppealDetail appeal={appeal} users={users} currentUser={session!.user} blobEnabled={Boolean(process.env.BLOB_READ_WRITE_TOKEN)} />;
+  const [similarCount, ogvOrganizations] = await Promise.all([countSimilarAppeals(appeal), getOgvOrganizations()]);
+
+  return (
+    <AppealDetail
+      appeal={appeal}
+      users={users}
+      currentUser={session!.user}
+      blobEnabled={Boolean(process.env.BLOB_READ_WRITE_TOKEN)}
+      similarCount={similarCount}
+      ogvOrganizations={ogvOrganizations}
+    />
+  );
 }

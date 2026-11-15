@@ -1,6 +1,7 @@
 import { getActiveUsers } from "@/lib/queries";
 import { createAppeal } from "@/lib/actions";
-import { SOURCE_CHANNEL_GROUPS, DISTRICTS, CATEGORIES, TARGET_AUDIENCES, DEFAULT_RESPONSIBLE_NAME, ROLE_LABELS } from "@/lib/constants";
+import { SOURCE_CHANNEL_GROUPS, DISTRICTS, CATEGORIES, TARGET_AUDIENCES, DEFAULT_RESPONSIBLE_NAME, ROLE_LABELS, PRIORITY_REGIONS } from "@/lib/constants";
+import { SubjectAutofill } from "@/components/subject-autofill";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -28,6 +29,7 @@ export default async function NewAppealPage() {
             <CardDescription>Откуда пришло обращение — определяет маршрутизацию по регламенту</CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <SubjectAutofill />
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="sourceChannel">Источник *</Label>
               <NativeSelect id="sourceChannel" name="sourceChannel" required defaultValue="">
@@ -57,8 +59,13 @@ export default async function NewAppealPage() {
               </p>
             </div>
             <div className="flex flex-col gap-1.5 sm:col-span-2">
-              <Label htmlFor="subject">Тема письма</Label>
+              <Label htmlFor="subject">Тема (суть кратко)</Label>
               <Input id="subject" name="subject" placeholder="Как обращение озаглавлено в письме/САДД" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="receivedAtDgd">Дата поступления</Label>
+              <Input id="receivedAtDgd" name="receivedAtDgd" type="date" />
+              <p className="text-xs text-[var(--muted)]">Для бумажной почты — дата почтового штемпеля. Пусто — сегодня.</p>
             </div>
           </CardContent>
         </Card>
@@ -79,6 +86,16 @@ export default async function NewAppealPage() {
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="middleName">Отчество</Label>
               <Input id="middleName" name="middleName" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="region">Регион</Label>
+              <Input id="region" name="region" list="priority-regions" placeholder="Воронежская область" />
+              <datalist id="priority-regions">
+                {PRIORITY_REGIONS.map((r) => (
+                  <option key={r} value={r} />
+                ))}
+              </datalist>
+              <p className="text-xs text-[var(--muted)]">Воронеж, Липецк, Калуга, Тамбов, Курск — приоритет.</p>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="district">Район</Label>
@@ -109,6 +126,10 @@ export default async function NewAppealPage() {
               <input id="isCollective" name="isCollective" type="checkbox" className="h-4 w-4 rounded border-[var(--border)]" />
               <Label htmlFor="isCollective" className="!text-[var(--foreground)]">Коллективное обращение</Label>
               <Input name="signatoryCount" type="number" placeholder="Кол-во подписавших" className="ml-auto w-40" />
+            </div>
+            <div className="flex items-center gap-2 sm:col-span-2">
+              <input id="isMass" name="isMass" type="checkbox" className="h-4 w-4 rounded border-[var(--border)]" />
+              <Label htmlFor="isMass" className="!text-[var(--foreground)]">Массовое обращение (более 5 одинаковых)</Label>
             </div>
           </CardContent>
         </Card>

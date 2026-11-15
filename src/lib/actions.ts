@@ -6,7 +6,8 @@ import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { createAppealSchema } from "@/lib/schemas";
-import { STAGE_LABELS, TASK_STATUS_LABELS, READ_ONLY_ROLES, EDIT_BLOCKED_ROLES } from "@/lib/constants";
+import { STAGE_LABELS, TASK_STATUS_LABELS, READ_ONLY_ROLES, EDIT_BLOCKED_ROLES, isForbiddenDzTarget } from "@/lib/constants";
+import { formatRegulationSubject } from "@/lib/subject-format";
 import { importAppealsFromMail, mailImportConfigured, importReviewerEmail } from "@/lib/mail-import";
 import { notifyUsers, appealsMailbox, sendEmail, appUrl } from "@/lib/notify";
 import { attachmentPrefix, requireAttachmentEditor } from "@/lib/attachments";
@@ -41,6 +42,7 @@ export async function createAppeal(formData: FormData) {
   const parsed = createAppealSchema.safeParse({
     ...cleaned,
     isCollective: raw.isCollective === "on",
+    isMass: raw.isMass === "on",
   });
 
   if (!parsed.success) {
@@ -54,7 +56,7 @@ export async function createAppeal(formData: FormData) {
     data: {
       sourceChannel: data.sourceChannel,
       subject: data.subject,
-      receivedAtDgd: now,
+      receivedAtDgd: data.receivedAtDgd ? new Date(data.receivedAtDgd) : now,
       receivedAtKau: now,
       lastName: data.lastName,
       firstName: data.firstName,
@@ -65,6 +67,8 @@ export async function createAppeal(formData: FormData) {
       address: data.address,
       district: data.district,
       isCollective: data.isCollective ?? false,
+      region: data.region,
+      isMass: data.isMass ?? false,
       signatoryCount: data.signatoryCount,
       goal: data.goal,
       description: data.description,
@@ -102,7 +106,7 @@ export async function createAppeal(formData: FormData) {
       appUrl(`/appeals/${appeal.id}`),
     ].filter((l): l is string => typeof l === "string");
     after(() =>
-      sendEmail(mailbox, `Новое обращение: ${appealTitle(appeal)}`, lines.join("\n")).catch((e) =>
+      sendEmail(mailbox, formatRegulationSubject(appeal), lines.join("\n")).catch((e) =>
         console.error("Копия обращения на почту не отправлена:", e)
       )
     );
@@ -174,9 +178,13 @@ export async function updateAppealFields(
     forwardedToOp: boolean;
     registrationNumber: string;
     replyNumberToCitizen: string;
+    region: string;
+    isMass: boolean;
+    ogvJustification: string;
   }>
-) {
+): Promise<{ error?: string }> {
   const user = await requireEditor();
+  const current = await prisma.appeal.findUniqueOrThrow({ where: { id: appealId } });
 
   const data: Record<string, unknown> = {};
   const events: { type: string; message: string; authorId: string }[] = [];
@@ -187,9 +195,22 @@ export async function updateAppealFields(
   if (fields.actionPlan !== undefined) data.actionPlan = fields.actionPlan;
   if (fields.resolutionPath !== undefined) {
     data.resolutionPath = fields.resolutionPath;
+    if (fields.resolutionPath && !current.routedAt) data.routedAt = new Date();
     events.push({ type: "STAGE_CHANGE", message: `КАУ: маршрут — «${fields.resolutionPath}»`, authorId: user.id });
   }
-  if (fields.routingTarget !== undefined) data.routingTarget = fields.routingTarget;
+  if (fields.routingTarget !== undefined) {
+    const path = fields.resolutionPath ?? current.resolutionPath ?? "";
+    if (path.includes("Депутатский запрос") && isForbiddenDzTarget(fields.routingTarget)) {
+      return { error: "По регламенту ДЗ на имя губернатора Воронежской области не направляем" };
+    }
+    data.routingTarget = fields.routingTarget;
+  }
+  if (fields.region !== undefined) data.region = fields.region.trim() || null;
+  if (fields.ogvJustification !== undefined) data.ogvJustification = fields.ogvJustification;
+  if (fields.isMass !== undefined) {
+    data.isMass = fields.isMass;
+    events.push({ type: "NOTE", message: fields.isMass ? "Отмечено как массовое обращение" : "Снята отметка «массовое»", authorId: user.id });
+  }
   if (fields.result !== undefined) data.result = fields.result;
   if (fields.registrationNumber !== undefined) data.registrationNumber = fields.registrationNumber;
   if (fields.replyNumberToCitizen !== undefined) data.replyNumberToCitizen = fields.replyNumberToCitizen;
@@ -223,6 +244,52 @@ export async function updateAppealFields(
   revalidatePath(`/appeals/${appealId}`);
   revalidatePath("/");
   revalidatePath("/summary");
+  return {};
+}
+
+/**
+ * Этапы ДЗ по регламенту: согласовано ДГД → подписано лично депутатом →
+ * направлено в ОГВ. Следующий этап нельзя отметить раньше предыдущего;
+ * перед направлением должны быть указаны ОГВ и обоснование его выбора.
+ */
+export async function setDzStep(
+  appealId: string,
+  step: "approved" | "signed" | "sent",
+  done: boolean
+): Promise<{ error?: string }> {
+  const user = await requireEditor();
+  const a = await prisma.appeal.findUniqueOrThrow({ where: { id: appealId } });
+  const now = new Date();
+  const data: Record<string, Date | null> = {};
+  let message = "";
+
+  if (step === "approved") {
+    if (!done && a.deputySignedAt) return { error: "Сначала снимите отметку о подписании" };
+    data.dgdApprovedAt = done ? now : null;
+    message = done ? "ДЗ согласован ДГД" : "Снята отметка о согласовании ДЗ";
+  } else if (step === "signed") {
+    if (done && !a.dgdApprovedAt) return { error: "Подписание — только после согласования ДГД" };
+    if (!done && a.dzSentAt) return { error: "Сначала снимите отметку о направлении" };
+    data.deputySignedAt = done ? now : null;
+    message = done ? "ДЗ подписан депутатом" : "Снята отметка о подписании ДЗ";
+  } else {
+    if (done && !a.deputySignedAt) return { error: "Направить ДЗ можно только после подписи депутата" };
+    if (done && (!a.routingTarget?.trim() || !a.ogvJustification?.trim())) {
+      return { error: "Укажите ОГВ и обоснование «почему этот ОГВ»" };
+    }
+    if (done && isForbiddenDzTarget(a.routingTarget)) {
+      return { error: "По регламенту ДЗ на имя губернатора Воронежской области не направляем" };
+    }
+    data.dzSentAt = done ? now : null;
+    message = done ? `ДЗ направлен: ${a.routingTarget}` : "Снята отметка о направлении ДЗ";
+  }
+
+  await prisma.appeal.update({
+    where: { id: appealId },
+    data: { ...data, events: { create: { type: step === "sent" ? "DZ_SENT" : "STAGE_CHANGE", message, authorId: user.id } } },
+  });
+  revalidatePath(`/appeals/${appealId}`);
+  return {};
 }
 
 /** Передать обращение целиком другому ответственному (напр. КАУ → GR). */

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Clock, AlertTriangle, User2 } from "lucide-react";
 import { StageBadge } from "@/components/stage-badge";
 import { isOverdue } from "@/lib/sla";
+import { isPriorityRegion } from "@/lib/constants";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 
@@ -16,6 +17,9 @@ type AppealForList = {
   receivedAtDgd: Date | null;
   receivedAtKau: Date | null;
   district: string | null;
+  number?: number;
+  region?: string | null;
+  isMass?: boolean;
   responsible: { user: { name: string } }[];
 };
 
@@ -32,7 +36,12 @@ export function AppealListItem({ appeal, showResponsible }: { appeal: AppealForL
           <p className="truncate text-sm font-semibold text-[var(--foreground)]">
             {appeal.lastName} {appeal.firstName ?? ""}
           </p>
-          <p className="text-xs text-[var(--muted)]">{appeal.sourceChannel}{appeal.district ? ` · ${appeal.district}` : ""}</p>
+          <p className="text-xs text-[var(--muted)]">
+            {appeal.number ? `ОГ-${appeal.number} · ` : ""}
+            {appeal.sourceChannel}
+            {appeal.region ? ` · ${appeal.region}` : ""}
+            {appeal.district ? ` · ${appeal.district}` : ""}
+          </p>
         </div>
         <StageBadge stage={appeal.stage} />
       </div>
@@ -40,6 +49,14 @@ export function AppealListItem({ appeal, showResponsible }: { appeal: AppealForL
       <p className="line-clamp-2 text-sm text-[var(--foreground)]/80">{appeal.goal}</p>
 
       <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-[var(--muted)]">
+        {isPriorityRegion(appeal.region) && (
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
+            приоритетный регион
+          </span>
+        )}
+        {appeal.isMass && (
+          <span className="rounded-full bg-sky-100 px-2 py-0.5 font-medium text-sky-800 dark:bg-sky-500/15 dark:text-sky-300">массовое</span>
+        )}
         {appeal.controlDate && (
           <span className="flex items-center gap-1">
             <Clock className="h-3.5 w-3.5" />
