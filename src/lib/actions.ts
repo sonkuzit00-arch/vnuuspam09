@@ -9,7 +9,7 @@ import { createAppealSchema } from "@/lib/schemas";
 import { STAGE_LABELS, TASK_STATUS_LABELS, READ_ONLY_ROLES, EDIT_BLOCKED_ROLES, isForbiddenDzTarget } from "@/lib/constants";
 import { formatRegulationSubject } from "@/lib/subject-format";
 import { importAppealsFromMail, mailImportConfigured, importReviewerEmail } from "@/lib/mail-import";
-import { notifyUsers, appealsMailbox, sendEmail, appUrl } from "@/lib/notify";
+import { notifyUsers, announceNewAppeal, appealsMailbox, sendEmail, appUrl } from "@/lib/notify";
 import { attachmentPrefix, requireAttachmentEditor } from "@/lib/attachments";
 import { del, head } from "@vercel/blob";
 
@@ -111,6 +111,15 @@ export async function createAppeal(formData: FormData) {
       )
     );
   }
+
+  after(async () => {
+    const responsible = await prisma.user.findUnique({ where: { id: data.responsibleId }, select: { name: true } });
+    await announceNewAppeal(appeal, formatRegulationSubject(appeal), {
+      responsibleName: responsible?.name,
+      registeredBy: user.name,
+      skipUserId: user.id,
+    });
+  });
 
   if (data.responsibleId !== user.id) {
     after(() =>
@@ -359,16 +368,15 @@ export async function createAppealTask(appealId: string, assigneeId: string, des
   if (assigneeId !== user.id) {
     after(() =>
       notifyUsers([assigneeId], {
-        subject: "Новое поручение",
-        text: `${description}${dueText}\nОбращение: ${appealTitle(appeal)}\nПоручил(а): ${user.name}`,
+        subject: "Вам поступила новая задача",
+        text: `${description}${dueText}\nОбращение ОГ-${appeal.number}: ${appealTitle(appeal)}\nПоручил(а): ${user.name}\n\nВсе ваши задачи: ${appUrl("/tasks")}`,
         link: `/appeals/${appealId}`,
       })
     );
   }
 
   revalidatePath(`/appeals/${appealId}`);
-  revalidatePath("/");
-  revalidatePath("/summary");
+  revalidatePath("/", "layout");
 }
 
 /**
@@ -420,8 +428,7 @@ export async function updateTaskStatus(taskId: string, status: string, channel?:
   });
 
   revalidatePath(`/appeals/${task.appealId}`);
-  revalidatePath("/");
-  revalidatePath("/summary");
+  revalidatePath("/", "layout");
 }
 
 /** Добавить исходящий номер (перенаправление, депутатский запрос…) — их может быть несколько. */
@@ -550,7 +557,7 @@ async function requirePendingReviewer(appealId: string) {
 /** Принять письмо как обращение — оно появляется у КАУ в «Требуют маршрутизации». */
 export async function approveImportedAppeal(appealId: string) {
   const { user } = await requirePendingReviewer(appealId);
-  await prisma.appeal.update({
+  const appeal = await prisma.appeal.update({
     where: { id: appealId },
     data: {
       importStatus: null,
@@ -558,6 +565,13 @@ export async function approveImportedAppeal(appealId: string) {
       events: { create: { type: "STAGE_CHANGE", message: "Письмо из почты согласовано и принято как обращение", authorId: user.id } },
     },
   });
+  after(() =>
+    announceNewAppeal(appeal, formatRegulationSubject(appeal), {
+      responsibleName: user.name,
+      registeredBy: user.name,
+      skipUserId: user.id,
+    })
+  );
   revalidatePath(`/appeals/${appealId}`);
   revalidatePath("/");
   revalidatePath("/summary");

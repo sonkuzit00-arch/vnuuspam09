@@ -14,6 +14,7 @@ import {
   Settings,
   BookUser,
   Gift,
+  ListTodo,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -24,6 +25,7 @@ type ShellUser = { id: string; name?: string | null; email?: string | null; role
 
 const NAV = [
   { href: "/", label: "Личный кабинет", icon: Inbox, roles: ["ADMIN", "KAU", "GD", "GR", "OP", "BTL_BF", "APPROVER", "PRESS"] },
+  { href: "/tasks", label: "Мои задачи", icon: ListTodo, roles: ["ADMIN", "KAU", "GD", "GR", "OP", "BTL_BF", "APPROVER", "PRESS"] },
   { href: "/summary", label: "Общий свод", icon: LayoutGrid, roles: [...MANAGEMENT_ROLES] },
   { href: "/reports", label: "Отчёты", icon: FileBarChart, roles: [...MANAGEMENT_ROLES] },
   { href: "/contacts", label: "Контакты ОГВ", icon: BookUser, roles: [...ROLES] },
@@ -42,7 +44,7 @@ function initials(name?: string | null) {
     .toUpperCase();
 }
 
-export function AppShell({ user, children }: { user: ShellUser; children: React.ReactNode }) {
+export function AppShell({ user, newTasks = 0, children }: { user: ShellUser; newTasks?: number; children: React.ReactNode }) {
   const pathname = usePathname();
 
   return (
@@ -82,6 +84,11 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
                 )}
                 <Icon className="relative z-10 h-4 w-4" />
                 <span className="relative z-10">{item.label}</span>
+                {item.href === "/tasks" && newTasks > 0 && (
+                  <span className="relative z-10 ml-auto rounded-full bg-red-600 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white" aria-label={`Новых задач: ${newTasks}`}>
+                    {newTasks}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -115,6 +122,14 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
         <header className="sticky top-0 z-30 flex items-center justify-between border-b border-[var(--border)] bg-[var(--background)]/80 px-4 py-3 backdrop-blur-xl md:hidden">
           <p className="text-sm font-semibold">Обращения ДГД</p>
           <div className="flex items-center gap-1">
+            {user.role !== "VIEWER" && (
+              <Link href="/tasks" aria-label="Мои задачи" className="relative rounded-lg p-2 hover:bg-[var(--surface-2)]">
+                <ListTodo className="h-4 w-4" />
+                {newTasks > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-4 text-white">{newTasks}</span>
+                )}
+              </Link>
+            )}
             <Link href="/contacts" aria-label="Контакты ОГВ" className="rounded-lg p-2 hover:bg-[var(--surface-2)]">
               <BookUser className="h-4 w-4" />
             </Link>

@@ -26,6 +26,7 @@ model User {
   notifyByTelegram Boolean @default(false)
   telegramChatId   String?
   telegramLinkCode String? @unique // одноразовый код для привязки через /start
+  notifyNewAppeals Boolean @default(false) // в рассылке о каждом новом обращении (перечень задаёт администратор)
 
   appeals       AppealResponsible[]
   events        AppealEvent[]

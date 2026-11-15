@@ -120,3 +120,17 @@ export async function getOgvOrganizations() {
   });
   return rows.map((r) => r.organization);
 }
+
+/** Новые (ещё не взятые в работу) задачи — счётчик в меню. */
+export async function countNewTasks(userId: string) {
+  return prisma.appealTask.count({ where: { assigneeId: userId, status: "PENDING", appeal: { importStatus: null } } });
+}
+
+/** Задачи, которые поставил этот сотрудник другим и которые ещё не выполнены. */
+export async function getTasksAssignedBy(userId: string) {
+  return prisma.appealTask.findMany({
+    where: { assignedById: userId, assigneeId: { not: userId }, status: { not: "DONE" }, appeal: { importStatus: null } },
+    orderBy: { createdAt: "desc" },
+    include: { appeal: true, assignedBy: true, assignee: true },
+  });
+}

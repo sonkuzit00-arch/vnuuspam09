@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getMyAppeals, getMyTasks, getAppealsNeedingRouting, getMediaCoverageAppeals, getPendingImports } from "@/lib/queries";
@@ -102,10 +103,13 @@ export default async function CabinetPage() {
       {openTasks.length > 0 && (
         <div>
           <div className="mb-3 flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-[var(--foreground)]">Мои поручения</h2>
+            <h2 className="text-sm font-semibold text-[var(--foreground)]">Мои задачи</h2>
             <span className="rounded-full bg-[var(--surface-2)] px-2 py-0.5 text-xs text-[var(--muted)]">
               {openTasks.length}
             </span>
+            <Link href="/tasks" className="ml-auto text-xs font-medium text-violet-600 hover:underline">
+              Открыть задачник →
+            </Link>
           </div>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
             {openTasks.map((task) => (

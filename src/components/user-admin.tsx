@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Mail, Send, UserPlus } from "lucide-react";
+import { Mail, Megaphone, Send, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +18,9 @@ type AdminUser = {
   email: string;
   role: string;
   isActive: boolean;
+  notifyEmail: string | null;
   notifyByEmail: boolean;
+  notifyNewAppeals: boolean;
   notifyByTelegram: boolean;
   telegramLinked: boolean;
 };
@@ -48,6 +50,9 @@ function UserRow({
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email);
   const [role, setRole] = useState(user.role);
+  const [notifyEmail, setNotifyEmail] = useState(user.notifyEmail ?? "");
+  const [notifyByEmail, setNotifyByEmail] = useState(user.notifyByEmail);
+  const [notifyNewAppeals, setNotifyNewAppeals] = useState(user.notifyNewAppeals);
 
   return (
     <div className={`flex flex-col gap-2 rounded-lg border border-[var(--border)] p-3 ${user.isActive ? "" : "opacity-60"}`}>
@@ -56,6 +61,21 @@ function UserRow({
           <Input value={name} onChange={(e) => setName(e.target.value)} aria-label="ФИО" />
           <Input value={email} onChange={(e) => setEmail(e.target.value)} aria-label="Email" />
           <RoleSelect value={role} onChange={(e) => setRole(e.target.value)} aria-label="Роль" />
+          <Input
+            type="email"
+            value={notifyEmail}
+            onChange={(e) => setNotifyEmail(e.target.value)}
+            placeholder="Почта для уведомлений (если не логин)"
+            aria-label="Почта для уведомлений"
+          />
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={notifyByEmail} onChange={(e) => setNotifyByEmail(e.target.checked)} />
+            Письма о задачах и сроках
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={notifyNewAppeals} onChange={(e) => setNotifyNewAppeals(e.target.checked)} />
+            Рассылка о новых обращениях
+          </label>
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
@@ -63,6 +83,7 @@ function UserRow({
           <Badge variant="secondary">{ROLE_LABELS[user.role as keyof typeof ROLE_LABELS] ?? user.role}</Badge>
           {!user.isActive && <Badge variant="destructive">Заблокирован</Badge>}
           <span className="text-xs text-[var(--muted)]">{user.email}</span>
+          {user.notifyNewAppeals && <Megaphone className="h-3.5 w-3.5 text-violet-600" aria-label="В рассылке о новых обращениях" />}
           {user.notifyByEmail && <Mail className="h-3.5 w-3.5 text-[var(--muted)]" aria-label="Уведомления на почту" />}
           {user.notifyByTelegram && user.telegramLinked && <Send className="h-3.5 w-3.5 text-[var(--muted)]" aria-label="Уведомления в Telegram" />}
         </div>
@@ -75,7 +96,7 @@ function UserRow({
               size="sm"
               onClick={() =>
                 run(async () => {
-                  const r = await updateUser(user.id, { name, email, role });
+                  const r = await updateUser(user.id, { name, email, role, notifyEmail, notifyByEmail, notifyNewAppeals });
                   if (!r.error) setEditing(false);
                   return r;
                 }, "Сохранено")
@@ -206,6 +227,9 @@ export function UserAdmin({
       <Card>
         <CardHeader>
           <CardTitle>Все пользователи · {users.length}</CardTitle>
+          <CardDescription>
+            «Изменить» → почта для уведомлений, письма о задачах, рассылка о новых обращениях (значок рупора — сотрудник в перечне).
+          </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
           {users.map((u) => (

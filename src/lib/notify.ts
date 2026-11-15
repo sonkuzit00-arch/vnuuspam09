@@ -71,3 +71,57 @@ export async function notifyUsers(userIds: (string | null | undefined)[], n: Not
     })
   );
 }
+
+/**
+ * Рассылка о новом обращении: стандартное письмо (тема по регламенту, краткая
+ * информация, ссылка на карточку) сотрудникам из перечня — его задаёт
+ * администратор в разделе «Пользователи». Письмо уходит на адрес для
+ * уведомлений независимо от личных настроек; Telegram — если привязан.
+ */
+export async function announceNewAppeal(
+  appeal: {
+    id: string;
+    number: number;
+    sourceChannel: string;
+    lastName: string;
+    firstName: string | null;
+    middleName: string | null;
+    region: string | null;
+    category: string;
+    goal: string;
+    controlDate: Date | null;
+  },
+  subject: string,
+  opts: { responsibleName?: string | null; registeredBy?: string | null; skipUserId?: string } = {}
+) {
+  const users = await prisma.user.findMany({
+    where: { notifyNewAppeals: true, isActive: true, id: opts.skipUserId ? { not: opts.skipUserId } : undefined },
+  });
+  if (!users.length) return;
+
+  const text = [
+    `Поступило новое обращение ОГ-${appeal.number}.`,
+    "",
+    `Заявитель: ${[appeal.lastName, appeal.firstName, appeal.middleName].filter(Boolean).join(" ")}`,
+    `Канал: ${appeal.sourceChannel}`,
+    appeal.region && `Регион: ${appeal.region}`,
+    `Категория: ${appeal.category}`,
+    `Суть: ${appeal.goal}`,
+    opts.responsibleName && `Ответственный: ${opts.responsibleName}`,
+    appeal.controlDate && `Контрольный срок: ${appeal.controlDate.toLocaleDateString("ru-RU")}`,
+    opts.registeredBy && `Зарегистрировал(а): ${opts.registeredBy}`,
+    "",
+    `Карточка: ${appUrl(`/appeals/${appeal.id}`)}`,
+  ]
+    .filter((l): l is string => typeof l === "string")
+    .join("\n");
+
+  await Promise.all(
+    users.flatMap((u) => {
+      const jobs: Promise<void>[] = [];
+      if (emailConfigured()) jobs.push(sendEmail(u.notifyEmail || u.email, subject, text));
+      if (u.telegramChatId && telegramConfigured()) jobs.push(sendTelegram(u.telegramChatId, `${subject}\n\n${text}`));
+      return jobs.map((job) => job.catch((e) => console.error(`Рассылка о новом обращении для ${u.email} не отправлена:`, e)));
+    })
+  );
+}

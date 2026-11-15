@@ -44,7 +44,10 @@ export async function createUser(input: { name: string; email: string; role: str
   return { password };
 }
 
-export async function updateUser(userId: string, input: { name: string; email: string; role: string }): Promise<Result> {
+export async function updateUser(
+  userId: string,
+  input: { name: string; email: string; role: string; notifyEmail?: string; notifyByEmail?: boolean; notifyNewAppeals?: boolean }
+): Promise<Result> {
   const admin = await requireAdmin();
   const parsed = userSchema.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
@@ -53,7 +56,18 @@ export async function updateUser(userId: string, input: { name: string; email: s
   const sameEmail = await prisma.user.findUnique({ where: { email: parsed.data.email } });
   if (sameEmail && sameEmail.id !== userId) return { error: "Пользователь с таким email уже есть" };
 
-  await prisma.user.update({ where: { id: userId }, data: parsed.data });
+  const notifyEmail = input.notifyEmail?.trim() || null;
+  if (notifyEmail && !z.email().safeParse(notifyEmail).success) return { error: "Некорректный адрес для уведомлений" };
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      ...parsed.data,
+      ...(input.notifyEmail !== undefined && { notifyEmail }),
+      ...(input.notifyByEmail !== undefined && { notifyByEmail: input.notifyByEmail }),
+      ...(input.notifyNewAppeals !== undefined && { notifyNewAppeals: input.notifyNewAppeals }),
+    },
+  });
   revalidatePath("/admin/users");
   return {};
 }
