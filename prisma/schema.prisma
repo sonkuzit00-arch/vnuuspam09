@@ -40,7 +40,8 @@ model User {
 }
 
 model Appeal {
-  id String @id @default(cuid())
+  id     String @id @default(cuid())
+  number Int    @unique @default(autoincrement()) // короткий номер карточки: [ОГ-125] в теме писем
 
   // --- Поступление / маршрутизация ---
   sourceChannel      String
@@ -50,6 +51,9 @@ model Appeal {
   registrationNumber String? // номер входящего в САДД
   sourceMessageId    String?   @unique // Message-ID письма, если обращение импортировано из почты
   importStatus       String? // PENDING — письмо из почты ждёт согласования проверяющим; null — обычное обращение
+  region             String? // субъект РФ из темы письма; приоритетные — см. PRIORITY_REGIONS
+  isMass             Boolean   @default(false) // массовое обращение (более 5 одинаковых)
+  routedAt           DateTime? // когда КАУ впервые назначило формат отработки — для аналитики скорости
   forwardedToOp      Boolean   @default(false)
   forwardedToOpAt    DateTime?
 
@@ -79,6 +83,9 @@ model Appeal {
   resolutionPath       String? // формат ответа/маршрут, назначает КАУ при триаже
   routingTarget        String? // кому конкретно (депутат/комитет), если resolutionPath — перенаправление
   controlDate          DateTime?
+  ogvJustification     String? // ДЗ: почему запрос именно в этот ОГВ (обязательно по регламенту)
+  dgdApprovedAt        DateTime? // ДЗ: согласовано ДГД
+  deputySignedAt       DateTime? // ДЗ: подписано лично депутатом
   dzSentAt             DateTime?
   replySentAt          DateTime?
   replyNumberToCitizen String? // номер ответа гражданину

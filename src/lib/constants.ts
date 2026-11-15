@@ -29,6 +29,28 @@ export function getChannelGroup(channel: string): string {
   return "Прочее";
 }
 
+// Приоритетные регионы по регламенту: их обращения отрабатываются в первую
+// очередь, а на массовые обращения из них ответ обязателен.
+export const PRIORITY_REGIONS = [
+  "Воронежская область",
+  "Липецкая область",
+  "Калужская область",
+  "Тамбовская область",
+  "Курская область",
+] as const;
+
+export function isPriorityRegion(region: string | null | undefined) {
+  return Boolean(region && /воронеж|липецк|калуж|калуг|тамбов|курск/i.test(region));
+}
+
+// Порог массового обращения по регламенту: «более 5» одинаковых.
+export const MASS_APPEAL_THRESHOLD = 5;
+
+// ДЗ на имя губернатора Воронежской области по регламенту не направляем.
+export function isForbiddenDzTarget(target: string | null | undefined) {
+  return Boolean(target && /губернатор/i.test(target) && /воронеж/i.test(target));
+}
+
 export const DISTRICTS = [
   "Аннинский",
   "г. Борисоглебск",
