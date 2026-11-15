@@ -1,5 +1,6 @@
 import { ImapFlow } from "imapflow";
-import { simpleParser, type AddressObject } from "mailparser";
+import { simpleParser, type AddressObject, type Attachment } from "mailparser";
+import { cardNumberFromSubject, isReplacementSubject, parseRegulationSubject, type ParsedSubject } from "@/lib/subject-format";
 import { put } from "@vercel/blob";
 import { prisma } from "@/lib/prisma";
 import { notifyUsers } from "@/lib/notify";
@@ -20,7 +21,45 @@ const BATCH = 20; // писем за один запуск — чтобы уло
 export const mailImportConfigured = () =>
   Boolean(process.env.IMAP_HOST && process.env.IMAP_USER && process.env.IMAP_PASSWORD);
 
-export type MailImportResult = { imported: number; skipped: number; errors: string[] };
+export type MailImportResult = { imported: number; linked: number; skipped: number; errors: string[] };
+
+async function saveAttachments(appealId: string, attachments: Attachment[]) {
+  for (const file of attachments) {
+    const fileName = file.filename || "вложение";
+    const contentType = file.contentType || "application/octet-stream";
+    if (process.env.BLOB_READ_WRITE_TOKEN && file.size <= MAX_ATTACHMENT_BYTES) {
+      const blob = await put(`${attachmentPrefix(appealId)}${fileName}`, file.content, {
+        access: "private",
+        addRandomSuffix: true,
+        contentType,
+      });
+      await prisma.appealAttachment.create({
+        data: { appealId, fileName, contentType, size: file.size, blobPathname: blob.pathname },
+      });
+    } else if (!process.env.BLOB_READ_WRITE_TOKEN && file.size <= MAX_DB_ATTACHMENT_BYTES) {
+      await prisma.appealAttachment.create({
+        data: { appealId, fileName, contentType, size: file.size, data: new Uint8Array(file.content) },
+      });
+    } else {
+      await prisma.appealEvent.create({
+        data: { appealId, type: "NOTE", message: `Вложение «${fileName}» не сохранено: слишком большой файл` },
+      });
+    }
+  }
+}
+
+/** Поля карточки из темы по регламенту. */
+function fieldsFromParsed(p: ParsedSubject) {
+  return {
+    ...(p.sourceChannel ? { sourceChannel: p.sourceChannel } : {}),
+    ...(p.region ? { region: p.region } : {}),
+    ...(p.lastName ? { lastName: p.lastName, firstName: p.firstName ?? null, middleName: p.middleName ?? null } : {}),
+    ...(p.receivedAt ? { receivedAtDgd: p.receivedAt } : {}),
+    ...(p.controlDate ? { controlDate: p.controlDate } : {}),
+    ...(p.problem ? { subject: p.problem, goal: p.problem } : {}),
+    isCollective: p.isCollective,
+  };
+}
 
 function senderOf(from: AddressObject | undefined) {
   const addr = from?.value?.[0];
@@ -47,7 +86,7 @@ async function reviewerId() {
 export async function importAppealsFromMail(): Promise<MailImportResult> {
   if (!mailImportConfigured()) throw new Error("Импорт из почты не настроен (IMAP_HOST, IMAP_USER, IMAP_PASSWORD)");
 
-  const result: MailImportResult = { imported: 0, skipped: 0, errors: [] };
+  const result: MailImportResult = { imported: 0, linked: 0, skipped: 0, errors: [] };
   const responsibleId = await reviewerId();
   const ownAddresses = [process.env.SMTP_FROM, process.env.SMTP_USER]
     .filter(Boolean)
@@ -84,51 +123,79 @@ export async function importAppealsFromMail(): Promise<MailImportResult> {
         const text = (mail.text || "").trim();
         const subject = mail.subject?.trim() || "(без темы)";
         const received = mail.date ?? new Date();
+        const parsed = parseRegulationSubject(subject);
+        const replacement = isReplacementSubject(subject);
+        const from = sender.name ? `${sender.name} <${sender.email}>` : sender.email || "неизвестный отправитель";
+
+        // Письмо по уже заведённой карточке: номер [ОГ-N] в теме (ответы, пересылки)
+        // или «Взамен ранее направленного» с той же фамилией и датой поступления.
+        const cardNumber = cardNumberFromSubject(subject);
+        const existing =
+          (cardNumber && (await prisma.appeal.findUnique({ where: { number: cardNumber } }))) ||
+          (replacement && parsed?.lastName && parsed.receivedAt
+            ? await prisma.appeal.findFirst({
+                where: { lastName: parsed.lastName, receivedAtDgd: parsed.receivedAt },
+                orderBy: { createdAt: "desc" },
+              })
+            : null);
+
+        if (existing) {
+          await prisma.appeal.update({
+            where: { id: existing.id },
+            data: {
+              ...(replacement && parsed ? fieldsFromParsed(parsed) : {}),
+              events: {
+                create: {
+                  type: "NOTE",
+                  message:
+                    (replacement ? "Письмо «Взамен ранее направленного» — карточка обновлена по теме. " : "Письмо по цепочке. ") +
+                    `От: ${from}. Тема: «${subject}».` +
+                    (text ? `\n${text.slice(0, 1500)}` : ""),
+                },
+              },
+            },
+          });
+          await saveAttachments(existing.id, mail.attachments);
+          await client.messageFlagsAdd(String(uid), ["\\Seen"], { uid: true });
+          result.linked++;
+          continue;
+        }
+
+        // Тема по регламенту — письмо внутреннее (КАУ, коллеги): данные заявителя
+        // берём из темы, а не из отправителя.
+        const applicant = parsed?.lastName
+          ? { lastName: parsed.lastName, firstName: parsed.firstName ?? null, middleName: parsed.middleName ?? null, email: null }
+          : { ...splitName(sender.name, sender.email), email: sender.email || null };
+
         const appeal = await prisma.appeal.create({
           data: {
-            sourceChannel: SOURCE_CHANNEL_EMAIL,
+            sourceChannel: parsed?.sourceChannel ?? SOURCE_CHANNEL_EMAIL,
             sourceMessageId: messageId,
             importStatus: "PENDING",
-            subject,
-            receivedAtDgd: received,
+            subject: parsed?.problem ?? subject,
+            region: parsed?.region ?? null,
+            receivedAtDgd: parsed?.receivedAt ?? received,
+            controlDate: parsed?.controlDate ?? null,
             receivedAtKau: new Date(),
-            ...splitName(sender.name, sender.email),
-            email: sender.email || null,
-            goal: (text.split("\n").find((l) => l.trim()) || subject).slice(0, 500),
+            ...applicant,
+            isCollective: parsed?.isCollective ?? false,
+            goal: (parsed?.problem ?? text.split("\n").find((l) => l.trim()) ?? subject).slice(0, 500),
             description: text || null,
             category: UNCLASSIFIED_CATEGORY,
             responsible: { create: { userId: responsibleId } },
             events: {
               create: {
                 type: "CREATED",
-                message: `Письмо импортировано из почты (${sender.email || "неизвестный отправитель"}, тема «${subject}») — ждёт согласования`,
+                message:
+                  `Письмо импортировано из почты (от ${from}, тема «${subject}»)` +
+                  (parsed ? " — поля заполнены по теме регламента" : "") +
+                  " — ждёт согласования",
               },
             },
           },
         });
 
-        for (const file of mail.attachments) {
-          const fileName = file.filename || "вложение";
-          const contentType = file.contentType || "application/octet-stream";
-          if (process.env.BLOB_READ_WRITE_TOKEN && file.size <= MAX_ATTACHMENT_BYTES) {
-            const blob = await put(`${attachmentPrefix(appeal.id)}${fileName}`, file.content, {
-              access: "private",
-              addRandomSuffix: true,
-              contentType,
-            });
-            await prisma.appealAttachment.create({
-              data: { appealId: appeal.id, fileName, contentType, size: file.size, blobPathname: blob.pathname },
-            });
-          } else if (!process.env.BLOB_READ_WRITE_TOKEN && file.size <= MAX_DB_ATTACHMENT_BYTES) {
-            await prisma.appealAttachment.create({
-              data: { appealId: appeal.id, fileName, contentType, size: file.size, data: new Uint8Array(file.content) },
-            });
-          } else {
-            await prisma.appealEvent.create({
-              data: { appealId: appeal.id, type: "NOTE", message: `Вложение «${fileName}» не сохранено: слишком большой файл` },
-            });
-          }
-        }
+        await saveAttachments(appeal.id, mail.attachments);
 
         await client.messageFlagsAdd(String(uid), ["\\Seen"], { uid: true });
         result.imported++;

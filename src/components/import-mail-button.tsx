@@ -17,8 +17,9 @@ export function ImportMailButton() {
         startTransition(async () => {
           const r = await importMailNow();
           if (r.error) return void toast.error(r.error);
-          if (!r.imported) toast.success("Новых писем нет");
-          else toast.success(`Новых обращений из почты: ${r.imported}`);
+          if (!r.imported && !r.linked) toast.success("Новых писем нет");
+          if (r.imported) toast.success(`Новых обращений из почты: ${r.imported}`);
+          if (r.linked) toast.success(`Писем по существующим карточкам: ${r.linked}`);
           if (r.failed) toast.error(`Не удалось обработать писем: ${r.failed}`);
         })
       }

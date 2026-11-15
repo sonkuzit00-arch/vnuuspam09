@@ -515,7 +515,7 @@ export async function deleteAttachment(attachmentId: string) {
 }
 
 /** Кнопка «Забрать письма» в кабинете КАУ/админа — импорт новых писем в обращения. */
-export async function importMailNow(): Promise<{ error?: string; imported?: number; skipped?: number; failed?: number }> {
+export async function importMailNow(): Promise<{ error?: string; imported?: number; linked?: number; skipped?: number; failed?: number }> {
   const user = await requireUser();
   if (user.email?.toLowerCase() !== importReviewerEmail()) return { error: "Забирать письма может только проверяющий" };
   if (!mailImportConfigured()) return { error: "Импорт из почты не настроен" };
@@ -524,7 +524,7 @@ export async function importMailNow(): Promise<{ error?: string; imported?: numb
     if (r.errors.length) console.error("Импорт из почты:", r.errors);
     revalidatePath("/");
     revalidatePath("/summary");
-    return { imported: r.imported, skipped: r.skipped, failed: r.errors.length };
+    return { imported: r.imported, linked: r.linked, skipped: r.skipped, failed: r.errors.length };
   } catch (e) {
     console.error("Импорт из почты:", e);
     return { error: "Не удалось подключиться к почте — проверьте IMAP-настройки" };
