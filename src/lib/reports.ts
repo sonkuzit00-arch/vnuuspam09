@@ -158,7 +158,9 @@ export async function getReportData(filters: ReportFilters) {
     breakdowns: {
       category: groupStats(appeals, (a) => a.category),
       region: groupStats(appeals, (a) => (a.region ? `${a.region}${isPriorityRegion(a.region) ? " ★" : ""}` : "Регион не указан")),
-      channel: groupStats(appeals, (a) => `${getChannelGroup(a.sourceChannel)} · ${a.sourceChannel}`),
+      channel: groupStats(appeals, (a) =>
+        a.sourceChannel.startsWith("ГД") ? a.sourceChannel : `${getChannelGroup(a.sourceChannel)} · ${a.sourceChannel}`
+      ),
       format: groupStats(appeals, (a) => a.resolutionPath ?? "Не промаршрутизировано"),
       responsible: groupStats(appeals, (a) => a.responsible[0]?.user.name ?? "Без ответственного"),
     },
